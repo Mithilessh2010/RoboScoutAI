@@ -1,0 +1,26 @@
+import { type Season } from "@ftc-scout/common";
+import { EntitySchema, Repository } from "typeorm";
+import { AnyObject } from "../../../type-utils";
+type BaseColumns = {
+    season: Season;
+    eventCode: string;
+    isRemote: boolean;
+    teamNumber: number;
+    rank: number;
+    rp: number;
+    tb1: number;
+    tb2: number;
+    wins: number;
+    losses: number;
+    ties: number;
+    dqs: number;
+    qualMatchesPlayed: number;
+    hasStats: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+};
+export declare let TeamEventParticipationSchemas: Record<Season, EntitySchema<TeamEventParticipation>>;
+export type TeamEventParticipation = BaseColumns & AnyObject;
+export declare let TeamEventParticipation: Record<Season, Repository<TeamEventParticipation>>;
+export declare function initTep(): void;
+export {};

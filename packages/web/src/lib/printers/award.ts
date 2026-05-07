@@ -1,0 +1,157 @@
+import { AwardType } from "../graphql/generated/graphql-operations";
+import { prettyPrintOrdinal } from "./number";
+
+export function prettyPrintAwardCategory(type: AwardType, season: number | null = null): string {
+    switch (type) {
+        case AwardType.Compass:
+        case AwardType.Connect:
+        case AwardType.Control:
+        case AwardType.Design:
+        case AwardType.Innovate:
+        case AwardType.Inspire:
+        case AwardType.JudgesChoice:
+        case AwardType.Motivate:
+        case AwardType.Reach:
+        case AwardType.Sustain:
+        case AwardType.Promote:
+        case AwardType.Think:
+            return prettyPrintAwardName(type) + " Winners";
+        case AwardType.DeansListFinalist:
+        case AwardType.DeansListSemiFinalist:
+        case AwardType.DeansListWinner:
+            return prettyPrintAwardName(type, season) + "s";
+        case AwardType.Winner:
+        case AwardType.Finalist:
+        case AwardType.DivisionFinalist:
+        case AwardType.DivisionWinner:
+        case AwardType.ConferenceFinalist:
+        case AwardType.TopRanked:
+            return prettyPrintAwardName(type);
+        default:
+            console.error(`Unknown award ${type}`);
+            return "Unknown Award";
+    }
+}
+
+export function prettyPrintAwardName(type: AwardType, season: number | null = null): string {
+    switch (type) {
+        case AwardType.Compass:
+            return "Compass Award";
+        case AwardType.Connect:
+            return "Connect Award";
+        case AwardType.Control:
+            return "Control Award";
+        case AwardType.DeansListFinalist:
+            if (season && season >= 2025) {
+                return "FIRST Leadership Award Finalist";
+            }
+            return "Dean's List Finalist";
+        case AwardType.DeansListSemiFinalist:
+            if (season && season >= 2025) {
+                return "FIRST Leadership Award Semifinalist";
+            }
+            return "Dean's List Semifinalist";
+        case AwardType.DeansListWinner:
+            if (season && season >= 2025) {
+                return "FIRST Leadership Award Winner";
+            }
+            return "Dean's List Winner";
+        case AwardType.Design:
+            return "Design Award";
+        case AwardType.ConferenceFinalist:
+            return "Conference Finalist Alliance";
+        case AwardType.DivisionFinalist:
+            return "Division Finalist Alliance";
+        case AwardType.DivisionWinner:
+            return "Division Winning Alliance";
+        case AwardType.Winner:
+            return "Winning Alliance";
+        case AwardType.Finalist:
+            return "Finalist Alliance";
+        case AwardType.Innovate:
+            return "Innovate Award";
+        case AwardType.Inspire:
+            return "Inspire Award";
+        case AwardType.JudgesChoice:
+            return "Judges' Choice Award";
+        case AwardType.Motivate:
+            return "Motivate Award";
+        case AwardType.Reach:
+            return "Reach Award";
+        case AwardType.Sustain:
+            return "Sustain Award";
+        case AwardType.Promote:
+            return "Promote Award";
+        case AwardType.Think:
+            return "Think Award";
+        case AwardType.TopRanked:
+            return "Top Ranked";
+        default:
+            console.error(`Unknown award ${type}`);
+            return "Unknown Award";
+    }
+}
+
+export function prettyPrintAwardPlacement(
+    type: AwardType,
+    placement: number,
+    season: number | null = null
+): string {
+    switch (type) {
+        case AwardType.DeansListFinalist:
+        case AwardType.DeansListSemiFinalist:
+        case AwardType.DeansListWinner:
+            return prettyPrintAwardName(type, season);
+        case AwardType.ConferenceFinalist:
+        case AwardType.DivisionFinalist:
+        case AwardType.DivisionWinner:
+        case AwardType.Winner:
+        case AwardType.Finalist:
+            return `${prettyPrintAwardName(type)} ${alliancePlacement(placement)}`;
+        case AwardType.TopRanked:
+            return `Top Ranked ${prettyPrintOrdinal(placement)}`;
+        default:
+            return `${prettyPrintAwardName(type)} ${winnerOrOrdinal(placement)}`;
+    }
+}
+
+export function prettyPrintAwardPlacementParts(
+    type: AwardType,
+    placement: number,
+    name: string | null,
+    season: number | null = null
+): [string, string] {
+    switch (type) {
+        case AwardType.DeansListFinalist:
+        case AwardType.DeansListSemiFinalist:
+        case AwardType.DeansListWinner:
+            return [prettyPrintAwardName(type, season), `(${name})`];
+        case AwardType.ConferenceFinalist:
+        case AwardType.DivisionFinalist:
+        case AwardType.DivisionWinner:
+        case AwardType.Winner:
+        case AwardType.Finalist:
+            return [prettyPrintAwardName(type), alliancePlacement(placement)];
+        case AwardType.TopRanked:
+            return ["Top Ranked", prettyPrintOrdinal(placement) + " Place"];
+        default:
+            return [prettyPrintAwardName(type), winnerOrOrdinal(placement)];
+    }
+}
+
+export function awardIsNotRanked(type: AwardType): boolean {
+    return (
+        type == AwardType.JudgesChoice ||
+        type == AwardType.DeansListFinalist ||
+        type == AwardType.DeansListSemiFinalist ||
+        type == AwardType.DeansListWinner
+    );
+}
+
+function winnerOrOrdinal(placement: number): string {
+    return placement == 1 ? "Winner" : `${prettyPrintOrdinal(placement)} Place`;
+}
+
+function alliancePlacement(placement: number): string {
+    return placement == 1 ? "Captain" : `${prettyPrintOrdinal(placement - 1)} Pick`;
+}

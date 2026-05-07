@@ -1,0 +1,377 @@
+/*
+    Sidebar limit: 1500px
+    Shrink limit:   800px
+    Phone limit:    550px
+*/
+
+:root {
+    /* --- Sizes --- */
+    --navbar-size: 60px;
+    --sidebar-size: 280px;
+
+    --sm-gap: 4px;
+    --md-gap: 8px;
+    --lg-gap: 12px;
+    --vl-gap: 24px;
+    --xl-gap: 32px;
+
+    --sm-pad: 4px;
+    --md-pad: 8px;
+    --lg-pad: 12px;
+
+    --xs-font-size: 10px;
+    --sm-font-size: 12px;
+    --md-font-size: 16px;
+    --lg-font-size: 20px;
+    --vl-font-size: 24px;
+    --xl-font-size: 32px;
+    --font-family: "Inter", sans-serif;
+
+    /* --- Z-Indices --- */
+    --hovered-row-zi: 300;
+    --focused-team-zi: 400;
+    --sidebar-zi: 500;
+    --navbar-zi: 1000;
+    --mobile-sidebar-bg-zi: 1400;
+    --mobile-sidebar-zi: 1500;
+    --modal-zi: 1600;
+
+    /* --- Utility --- */
+    --pill-border-radius: 999999px;
+}
+
+@media (max-width: 800px) {
+    :root {
+        /* --- Sizes --- */
+        --navbar-size: 60px;
+        --sidebar-size: 280px;
+
+        --sm-gap: 4px;
+        --md-gap: 7px;
+        --lg-gap: 11px;
+        --vl-gap: 21px;
+        --xl-gap: 28px;
+
+        --sm-pad: 4px;
+        --md-pad: 7px;
+        --lg-pad: 11px;
+
+        --xs-font-size: 8px;
+        --sm-font-size: 11px;
+        --md-font-size: 14px;
+        --lg-font-size: 18px;
+        --vl-font-size: 21px;
+        --xl-font-size: 28px;
+    }
+}
+
+@media (max-width: 550px) {
+    :root {
+        /* --- Sizes --- */
+        --navbar-size: 60px;
+        --sidebar-size: 280px;
+
+        --sm-gap: 3px;
+        --md-gap: 6px;
+        --lg-gap: 8px;
+        --vl-gap: 18px;
+        --xl-gap: 24px;
+
+        --sm-pad: 3px;
+        --md-pad: 6px;
+        --lg-pad: 8px;
+
+        --xs-font-size: 6px;
+        --sm-font-size: 8px;
+        --md-font-size: 12px;
+        --lg-font-size: 15px;
+        --vl-font-size: 18px;
+        --xl-font-size: 24px;
+    }
+}
+
+/* --- Colors --- */
+
+body {
+    --fg-color: rgb(var(--fg-color-vs));
+    --theme-color: rgb(var(--theme-color-vs));
+
+    --red-team-color: rgb(var(--red-team-color-vs));
+    --red-team-bg-color: rgba(var(--red-team-color-vs), var(--team-color-transparency));
+    --blue-team-color: rgb(var(--blue-team-color-vs));
+    --blue-team-bg-color: rgba(var(--blue-team-color-vs), var(--team-color-transparency));
+    --neutral-team-color: rgb(var(--neutral-team-color-vs));
+    --neutral-team-bg-color: rgba(var(--neutral-team-color-vs), var(--team-color-transparency));
+    --team-text-color: white;
+
+    --stat-transparency: 0.15;
+    --stat-text-color: var(--team-text-color);
+}
+
+body {
+    --fg-color-vs: 255, 255, 255;
+    --bg-color: #f2f2f2;
+
+    --modal-bg-color: rgba(0, 0, 0, 0.4);
+
+    --theme-color-vs: 44, 102, 110;
+    --theme-color-opacity: 0.75;
+    --inline-theme-color: var(--theme-color);
+
+    --hover-color: #f0f0f0;
+    --tab-hover-color: #fbfbfb;
+
+    --sep-color: lightgray;
+    --sep-hover-color: rgb(200, 200, 200);
+
+    --zebra-stripe-color: rgb(245, 245, 245);
+    --zebra-stripe-opacity: rgba(0, 0, 0, 0.0396);
+
+    --fade-shadow: rgba(0, 0, 0, 0.2);
+
+    --alert-bar-color: rgb(252, 160, 22);
+
+    --text-color: #000000;
+    --secondary-text-color: #636466;
+    --grayed-out-text-color: gray;
+    --theme-text-color: #ffffff;
+    --sidebar-text-color: var(--secondary-text-color);
+
+    --inverse-bg-color: #212121;
+    --inverse-text-color: #ffffff;
+    --inverse-secondary-text-color: #bdbdbd;
+
+    --form-bg-color: #efefef;
+    --form-hover-bg-color: #e3e3e3;
+    --form-click-bg-color: #d7d7d7;
+    --form-disabled-opacity: 0.7;
+
+    --team-color-transparency: 0.15;
+    --red-team-color-vs: 244, 67, 54;
+    --blue-team-color-vs: 33, 150, 243;
+    --neutral-team-color-vs: 170, 0, 255;
+    --red-team-text-color: rgb(var(--red-team-color-vs));
+    --blue-team-text-color: rgb(var(--blue-team-color-vs));
+    --neutral-team-text-color: rgb(var(--neutral-team-color-vs));
+
+    --red-stat-color-vs: var(--red-team-color-vs);
+    --blue-stat-color-vs: 25, 118, 210;
+    --light-blue-stat-color-vs: var(--blue-team-color-vs);
+    --purple-stat-color-vs: var(--neutral-team-color-vs);
+    --green-stat-color-vs: 67, 160, 71;
+    --red-stat-color: rgb(var(--red-stat-color-vs));
+    --red-stat-bg-color: rgba(var(--red-stat-color-vs), var(--stat-transparency));
+    --blue-stat-color: rgb(var(--blue-stat-color-vs));
+    --blue-stat-bg-color: rgba(var(--blue-stat-color-vs), var(--stat-transparency));
+    --light-blue-stat-color: rgb(var(--light-blue-stat-color-vs));
+    --light-blue-stat-bg-color: rgba(var(--light-blue-stat-color-vs), var(--stat-transparency));
+    --purple-stat-color: rgb(var(--purple-stat-color-vs));
+    --purple-stat-bg-color: rgba(var(--purple-stat-color-vs), var(--stat-transparency));
+    --green-stat-color: rgb(var(--green-stat-color-vs));
+    --green-stat-bg-color: rgba(var(--green-stat-color-vs), var(--stat-transparency));
+
+    --thick-border-width: 2px;
+
+    color-scheme: light;
+}
+
+body .render-dark {
+    display: none;
+}
+
+body.dark {
+    --fg-color-vs: 45, 45, 45;
+    --bg-color: #161616;
+
+    --modal-bg-color: rgba(78, 78, 78, 0.8);
+
+    --theme-color-vs: 31, 76, 82;
+    --theme-color-opacity: 0.3;
+    --inline-theme-color: #39848e;
+
+    --hover-color: #3a3a3a;
+    --tab-hover-color: #232323;
+
+    --sep-color: #4a4e51;
+    --sep-hover-color: #595d61;
+
+    --zebra-stripe-color: #353535;
+    --zebra-stripe-opacity: rgba(255, 255, 255, 0.041);
+
+    --fade-shadow: rgba(255, 255, 255, 0.15);
+
+    --alert-bar-color: rgb(169, 109, 18);
+
+    --text-color: #dfe2e6;
+    --secondary-text-color: #b7b7b8;
+    --grayed-out-text-color: #a0a0a0;
+    --theme-text-color: #ffffff;
+    --sidebar-text-color: var(--text-color);
+
+    --inverse-bg-color: #202020;
+    --inverse-text-color: var(--text-color);
+    --inverse-secondary-text-color: var(--secondary-text-color);
+
+    --form-bg-color: #191919;
+    --form-hover-bg-color: #232323;
+    --form-click-bg-color: #2d2d2d;
+    --form-disabled-opacity: 0.5;
+
+    --team-color-transparency: 0.25;
+    --red-team-color-vs: 175, 29, 29;
+    --red-team-bg-color: rgba(204, 47, 47, var(--team-color-transparency));
+    --blue-team-color-vs: 27, 87, 179;
+    --neutral-team-color-vs: 127, 0, 190;
+    --red-team-text-color: rgb(255, 83, 71);
+    --blue-team-text-color: rgb(33, 150, 243);
+    --neutral-team-text-color: rgb(196, 79, 255);
+
+    --red-stat-color-vs: 204, 47, 47;
+    --blue-stat-color-vs: var(--blue-team-color-vs);
+    --light-blue-stat-color-vs: 25, 118, 210;
+    --purple-stat-color-vs: var(--neutral-team-color-vs);
+    --green-stat-color-vs: 46, 125, 50;
+    --red-stat-color: rgb(var(--red-stat-color-vs));
+    --red-stat-bg-color: rgba(var(--red-stat-color-vs), var(--stat-transparency));
+    --blue-stat-color: rgb(var(--blue-stat-color-vs));
+    --blue-stat-bg-color: rgba(var(--blue-stat-color-vs), var(--stat-transparency));
+    --light-blue-stat-color: rgb(var(--light-blue-stat-color-vs));
+    --light-blue-stat-bg-color: rgba(var(--light-blue-stat-color-vs), var(--stat-transparency));
+    --purple-stat-color: rgb(var(--purple-stat-color-vs));
+    --purple-stat-bg-color: rgba(var(--purple-stat-color-vs), var(--stat-transparency));
+    --green-stat-color: rgb(var(--green-stat-color-vs));
+    --green-stat-bg-color: rgba(var(--green-stat-color-vs), var(--stat-transparency));
+
+    --thick-border-width: 1px;
+
+    color-scheme: dark;
+}
+
+body.dark :where(a.norm-link:link) {
+    color: #9e9eff;
+}
+body.dark :where(a.norm-link:visited) {
+    color: #d0adf0;
+}
+
+body.dark .render-dark {
+    display: initial;
+}
+body.dark .render-light {
+    display: none;
+}
+
+/* Same as above. Remember to copy past */
+@media (prefers-color-scheme: dark) {
+    body:not(.light) {
+        --fg-color-vs: 45, 45, 45;
+        --bg-color: #161616;
+
+        --modal-bg-color: rgba(78, 78, 78, 0.8);
+
+        --theme-color-vs: 31, 76, 82;
+        --theme-color-opacity: 0.3;
+        --inline-theme-color: #39848e;
+
+        --hover-color: #3a3a3a;
+        --tab-hover-color: #232323;
+
+        --sep-color: #4a4e51;
+        --sep-hover-color: #595d61;
+
+        --zebra-stripe-color: #353535;
+        --zebra-stripe-opacity: rgba(255, 255, 255, 0.041);
+
+        --fade-shadow: rgba(255, 255, 255, 0.15);
+
+        --alert-bar-color: rgb(169, 109, 18);
+
+        --text-color: #dfe2e6;
+        --secondary-text-color: #b7b7b8;
+        --grayed-out-text-color: #a0a0a0;
+        --theme-text-color: #ffffff;
+        --sidebar-text-color: var(--text-color);
+
+        --inverse-bg-color: #202020;
+        --inverse-text-color: var(--text-color);
+        --inverse-secondary-text-color: var(--secondary-text-color);
+
+        --form-bg-color: #191919;
+        --form-hover-bg-color: #232323;
+        --form-click-bg-color: #2d2d2d;
+        --form-disabled-opacity: 0.5;
+
+        --team-color-transparency: 0.25;
+        --red-team-color-vs: 175, 29, 29;
+        --red-team-bg-color: rgba(204, 47, 47, var(--team-color-transparency));
+        --blue-team-color-vs: 27, 87, 179;
+        --neutral-team-color-vs: 127, 0, 190;
+        --red-team-text-color: rgb(255, 83, 71);
+        --blue-team-text-color: rgb(33, 150, 243);
+        --neutral-team-text-color: rgb(196, 79, 255);
+
+        --red-stat-color-vs: 204, 47, 47;
+        --blue-stat-color-vs: var(--blue-team-color-vs);
+        --light-blue-stat-color-vs: 25, 118, 210;
+        --purple-stat-color-vs: var(--neutral-team-color-vs);
+        --green-stat-color-vs: 46, 125, 50;
+        --red-stat-color: rgb(var(--red-stat-color-vs));
+        --red-stat-bg-color: rgba(var(--red-stat-color-vs), var(--stat-transparency));
+        --blue-stat-color: rgb(var(--blue-stat-color-vs));
+        --blue-stat-bg-color: rgba(var(--blue-stat-color-vs), var(--stat-transparency));
+        --light-blue-stat-color: rgb(var(--light-blue-stat-color-vs));
+        --light-blue-stat-bg-color: rgba(var(--light-blue-stat-color-vs), var(--stat-transparency));
+        --purple-stat-color: rgb(var(--purple-stat-color-vs));
+        --purple-stat-bg-color: rgba(var(--purple-stat-color-vs), var(--stat-transparency));
+        --green-stat-color: rgb(var(--green-stat-color-vs));
+        --green-stat-bg-color: rgba(var(--green-stat-color-vs), var(--stat-transparency));
+
+        --thick-border-width: 1px;
+
+        color-scheme: dark;
+    }
+
+    body:not(.light) :where(a.norm-link:link) {
+        color: #9e9eff;
+    }
+    body:not(.light) :where(a.norm-link:visited) {
+        color: #d0adf0;
+    }
+
+    body:not(.light) .render-dark {
+        display: initial;
+    }
+    body:not(.light) .render-light {
+        display: none;
+    }
+}
+
+/* --- Resets --- */
+
+body {
+    color: var(--text-color);
+    font-size: var(--md-font-size);
+    font-family: var(--font-family);
+}
+
+* {
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+h1 {
+    font-size: var(--xl-font-size);
+}
+
+h2 {
+    font-size: var(--vl-font-size);
+}
+
+a {
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}

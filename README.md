@@ -1,37 +1,21 @@
-# RoboScoutAI
+# FTCScout
 
-RoboScoutAI is a working Next.js MVP for FTC scouting: season/team/event browsing, rankings, OPR/stat utilities, watch rooms, manual scouting, uploaded video timeline tagging, AI assistant wiring, picklists, dashboard, settings, and a future autoscore scaffold.
+FTCScout is a FIRST Tech Challenge (FTC) statistics website designed to provide the most detailed level of statistics analysis possible. It was inspired by [The Orange Alliance](https://theorangealliance.org/), [FTCScores](https://ftcscores.com/), [FTC Stats](http://www.ftcstats.org/), and [FTC Events](https://ftc-events.firstinspires.org/).
 
-## Run Locally
+It includes advanced visualizations, including 3D field maps.
 
-```bash
-npm install
-cp .env.example .env.local
-npx prisma generate
-npx prisma db push
-npm run prisma:seed
-npm run dev
-```
+![3D graphic of playing field](readmefiles/image1.png)
 
-Open http://localhost:3000.
+In addition, it provides detailed statistics and advanced filtering options
 
-## Environment Variables
+![Event Rankings Page](readmefiles/image2.png)
 
-- `OPENROUTER_API_KEY`: Enables `/api/ai/chat`.
-- `DATABASE_URL`: Defaults to SQLite for the MVP, for example `file:./dev.db`.
-- `NEXTAUTH_SECRET`: Placeholder for future auth.
-- `FTC_EVENTS_API_BASE_URL`: Defaults to `https://ftc-api.firstinspires.org/v2.0`.
-- `FTC_EVENTS_USERNAME`: Server-only FTC Events API username.
-- `FTC_EVENTS_AUTH_KEY`: Server-only FTC Events API authorization key. Never expose this in browser code or commit it.
+![Event Rankings Filtering Menu](readmefiles/image3.png)
 
-The app calls its own `/api/ftc/...` proxy routes. Browser/client code never calls the FTC Events API directly.
+FTCScout also provides a comprehensive API for fetching information. You have the choice between using [GraphQL](https://api.ftcscout.org/graphql) or the [Rest API](https://ftcscout.org/api/rest) to query information.
 
-## PostgreSQL Later
+![Alt text](readmefiles/image4.png)
 
-Change `provider = "sqlite"` to `provider = "postgresql"` in `prisma/schema.prisma`, set `DATABASE_URL` to your Postgres connection string, then run `npx prisma migrate dev`.
+## Development information
 
-## Current Status
-
-The app uses typed mock data for a realistic local-first MVP. Prisma schema and seed are included for database migration, but the pages read from the mock data module so the app works immediately.
-
-When FTC Events credentials are set, the app prefers live FTC data and keeps mock data as a fallback.
+[Development information can be found here](./instructions/instructions.md).

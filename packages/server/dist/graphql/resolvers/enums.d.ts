@@ -1,0 +1,12 @@
+export declare const AllianceGQL: import("graphql").GraphQLEnumType;
+export declare const StationGQL: import("graphql").GraphQLEnumType;
+export declare const AllianceRoleGQL: import("graphql").GraphQLEnumType;
+export declare const EventTypeGQL: import("graphql").GraphQLEnumType;
+export declare const EventTypeOptionGQL: import("graphql").GraphQLEnumType;
+export declare const RemoteOptionGQL: import("graphql").GraphQLEnumType;
+export declare const RegionOptionGQL: import("graphql").GraphQLEnumType;
+export declare const TournamentLevelGQL: import("graphql").GraphQLEnumType;
+export declare const AwardTypeGQL: import("graphql").GraphQLEnumType;
+export declare const SortDirGQL: import("graphql").GraphQLEnumType;
+export declare const FilterOpGQL: import("graphql").GraphQLEnumType;
+export declare const FilterGroupTyGQL: import("graphql").GraphQLEnumType;

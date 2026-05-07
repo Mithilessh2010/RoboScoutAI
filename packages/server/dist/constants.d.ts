@@ -1,0 +1,14 @@
+export declare const IS_PROD: boolean;
+export declare const IS_DEV: boolean;
+export declare const DATABASE_URL: string;
+export declare const FTC_API_KEY: string;
+export declare const FTC_API_BASE_URL: string;
+export declare const SERVER_PORT: number;
+export declare const LOGGING: boolean;
+export declare const SYNC_DB: boolean;
+export declare const SYNC_API: boolean;
+export declare const CACHE_REQ: boolean;
+export declare const FTC_API_THROTTLE_MS: number;
+export declare const LIVE_REFRESH_TTL_MS: number;
+export declare const FRONTEND_CODE: string;
+export declare const DB_TIMEOUT: string | undefined;

@@ -1,0 +1,1 @@
+{"version":3,"file":"get-event-awards.js","sourceRoot":"","sources":["../../src/ftc-api/get-event-awards.ts"],"names":[],"mappings":";;;;;;;;;;;;AACA,yDAAmD;AAEnD,SAAsB,cAAc,CAAC,MAAc,EAAE,SAAiB;;;QAClE,IAAI,IAAI,GAAG,MAAM,IAAA,gCAAa,EAAC,GAAG,MAAM,WAAW,SAAS,EAAE,CAAC,CAAC;QAChE,OAAO,MAAA,IAAI,aAAJ,IAAI,uBAAJ,IAAI,CAAG,QAAQ,CAAC,mCAAI,EAAE,CAAC;;CACjC;AAHD,wCAGC"}
