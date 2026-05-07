@@ -3,34 +3,34 @@
 import { useEffect, useState } from "react";
 import { ShieldCheck, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { fetchFtcApiIndex } from "@/lib/data/ftc-client";
 
 type Status =
   | { state: "loading" }
   | { state: "connected"; currentSeason?: number; maxSeason?: number }
-  | { state: "missing" | "unauthorized" | "unavailable" | "error"; message: string };
+  | { state: "missing" | "unauthorized" | "unavailable" | "unknown"; message: string };
 
 export function FtcApiStatus() {
   const [status, setStatus] = useState<Status>({ state: "loading" });
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/ftc/index")
-      .then(async (response) => {
-        const json = await response.json();
+    fetchFtcApiIndex<unknown>()
+      .then((json) => {
         if (cancelled) return;
         if (json.ok) {
-          const data = json.data ?? {};
-          setStatus({ state: "connected", currentSeason: data.currentSeason, maxSeason: data.maxSeason });
+          const data = json.data as { currentSeason?: number; maxSeason?: number } | undefined;
+          setStatus({ state: "connected", currentSeason: data?.currentSeason, maxSeason: data?.maxSeason });
           return;
         }
-        const code = json.error?.code;
+        const code = json.error.code;
         setStatus({
-          state: code === "MISSING_CREDENTIALS" ? "missing" : code === "UNAUTHORIZED" ? "unauthorized" : code === "SERVICE_UNAVAILABLE" ? "unavailable" : "error",
-          message: json.error?.message ?? "Unknown FTC Events API error.",
+          state: code === "MISSING_CREDENTIALS" ? "missing" : code === "UNAUTHORIZED" ? "unauthorized" : code === "SERVICE_UNAVAILABLE" ? "unavailable" : "unknown",
+          message: json.error.message ?? "Unknown FTC Events API error.",
         });
       })
       .catch((error) => {
-        if (!cancelled) setStatus({ state: "error", message: error instanceof Error ? error.message : "Unknown FTC Events API error." });
+        if (!cancelled) setStatus({ state: "unknown", message: error instanceof Error ? error.message : "Unknown FTC Events API error." });
       });
     return () => {
       cancelled = true;

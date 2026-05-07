@@ -21,11 +21,12 @@ export default async function SeasonPage({ params }: { params: Promise<{ season:
   return (
     <PageShell title={`${season.name} ${season.gameName}`} eyebrow="Season hub" actions={<SeasonSwitcher season={seasonId} />}>
       <DataWarning message={summary.warning ?? liveEvents.warning ?? liveTeams.warning} />
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <MetricCard label="Teams" value={seasonTeams.length} />
         <MetricCard label="Events" value={seasonEvents.length} />
         <MetricCard label="Matches" value={seasonMatches.length} />
         <MetricCard label="Completed" value={seasonMatches.filter((match) => match.status === "complete").length} />
+        <MetricCard label="Kickoff" value={season.kickoff} />
       </div>
       <div className="mt-6 flex flex-wrap gap-2">
         <LinkButton href={`/seasons/${seasonId}/teams`} variant="secondary">All teams</LinkButton>

@@ -42,6 +42,14 @@ export function fetchHybridSchedule<T = unknown>(params: { season: number; event
   return get<T>(`/api/ftc/schedule/hybrid${query(params)}`);
 }
 
+export function fetchAlliances<T = unknown>(params: { season: number; eventCode: string }) {
+  return get<T>(`/api/ftc/alliances${query(params)}`);
+}
+
+export function fetchAllianceSelection<T = unknown>(params: { season: number; eventCode: string }) {
+  return get<T>(`/api/ftc/alliance-selection${query(params)}`);
+}
+
 export function fetchRankings<T = unknown>(params: { season: number; eventCode: string; teamNumber?: number; top?: number }) {
   return get<T>(`/api/ftc/rankings${query(params)}`);
 }
@@ -56,4 +64,16 @@ export function fetchScoreDetails<T = unknown>(params: { season: number; eventCo
 
 export function fetchAwards<T = unknown>(params: { season: number; eventCode?: string; teamNumber?: number }) {
   return get<T>(`/api/ftc/awards${query(params)}`);
+}
+
+export function fetchAwardList<T = unknown>(season: number) {
+  return get<T>(`/api/ftc/awards/list${query({ season })}`);
+}
+
+export function fetchAdvancement<T = unknown>(params: { season: number; eventCode: string }) {
+  return get<T>(`/api/ftc/advancement${query(params)}`);
+}
+
+export function fetchAdvancementPoints<T = unknown>(params: { season: number; eventCode: string }) {
+  return get<T>(`/api/ftc/advancement/points${query(params)}`);
 }

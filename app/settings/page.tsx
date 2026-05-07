@@ -18,6 +18,13 @@ export default function SettingsPage() {
           <h2 className="text-xl font-semibold text-[#F1E9E9]">FTC Events API Setup</h2>
           <div className="mt-3 space-y-2 text-sm leading-6 text-[#F1E9E9]/68">
             <p>Add these to `.env.local`, then restart `npm run dev`:</p>
+            <ul className="list-disc space-y-1 pl-5">
+              <li>Add `FTC_EVENTS_USERNAME`.</li>
+              <li>Add `FTC_EVENTS_AUTH_KEY`.</li>
+              <li>Add `FTC_EVENTS_API_BASE_URL` if you need a non-default endpoint.</li>
+              <li>Restart the dev server after editing `.env.local`.</li>
+              <li>Test the connection with `/api/ftc/index`.</li>
+            </ul>
             <pre className="overflow-auto rounded-md bg-[#111331] p-3 text-xs text-[#F1E9E9]">{`FTC_EVENTS_USERNAME=your_username_here
 FTC_EVENTS_AUTH_KEY=your_authorization_key_here
 FTC_EVENTS_API_BASE_URL=https://ftc-api.firstinspires.org/v2.0`}</pre>
