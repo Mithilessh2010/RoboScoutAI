@@ -77,7 +77,7 @@ DB_TIMEOUT=5000
 
 ## Web Env
 
-Create `packages/web/.env` from `packages/web/.env.example`.
+Create `packages/web/.env.local` from `packages/web/.env.example`.
 
 Required variables:
 
@@ -86,7 +86,19 @@ PUBLIC_SERVER_ORIGIN="localhost:4000"
 PUBLIC_FRONTEND_CODE="local-dev-frontend-code"
 ```
 
-`PUBLIC_*` variables are exposed to the browser. Do not put the FTC API key or other secrets in `packages/web/.env`.
+Optional - FTC Events API credentials (web package):
+
+```env
+FTC_EVENTS_USERNAME="your_username_here"
+FTC_EVENTS_AUTH_KEY="your_authorization_key_here"
+FTC_EVENTS_API_BASE_URL="https://ftc-api.firstinspires.org/v2.0"
+```
+
+`PUBLIC_*` variables are exposed to the browser. Do not put secrets in variables prefixed with `PUBLIC_`. The FTC API credentials (without PUBLIC_ prefix) are server-side only and never exposed to the browser.
+
+If FTC_EVENTS_USERNAME and FTC_EVENTS_AUTH_KEY are not set, the app will use mock data as fallback.
+
+After setting FTC credentials, restart the dev server to pick up the new environment variables.
 
 ## Run Commands
 
