@@ -18,11 +18,9 @@ import { REGION_EC_DC } from "$lib/util/search-params/region";
 import { EVENT_TY_EC_DC, REMOTE_EC_DC } from "$lib/util/search-params/event-ty";
 import { DATE_EC_DC } from "$lib/util/search-params/date";
 import { dateToStr } from "$lib/util/date";
-import { refreshLiveStats } from "$lib/live-refresh";
 
-export const load: PageLoad = async ({ fetch, params, url }) => {
+export const load: PageLoad = ({ fetch, params, url }) => {
     let season = +params.season as Season;
-    let didRefresh = await refreshLiveStats(fetch, { season });
 
     if (params.tab == "teams") {
         let stats = getTepStatSet(season, false);
@@ -60,7 +58,7 @@ export const load: PageLoad = async ({ fetch, params, url }) => {
                 remote,
                 start: dateToStr(start),
                 end: dateToStr(end),
-            }, undefined, didRefresh),
+            }),
         };
     } else {
         let stats = getMatchStatSet(season, false);
@@ -98,7 +96,7 @@ export const load: PageLoad = async ({ fetch, params, url }) => {
                 remote,
                 start: dateToStr(start),
                 end: dateToStr(end),
-            }, undefined, didRefresh),
+            }),
         };
     }
 };

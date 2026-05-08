@@ -6,16 +6,12 @@ import { getData } from "$lib/graphql/getData";
 import type { PageLoad } from "./$types";
 import { error } from "@sveltejs/kit";
 import { seasonFromUrl } from "./+page.svelte";
-import { refreshLiveStats } from "$lib/live-refresh";
 
 export const load: PageLoad = async ({ url, params, fetch }) => {
-    let season = seasonFromUrl(url);
-    let didRefresh = await refreshLiveStats(fetch, { season });
-
     let teamData = await getData(getClient(fetch), TeamDocument, {
         number: +params.number,
-        season,
-    }, undefined, didRefresh);
+        season: seasonFromUrl(url),
+    });
 
     if (!browser && !get(teamData)?.data?.teamByNumber)
         throw error(404, `No team with number ${params.number}`);

@@ -22,6 +22,8 @@ import {
     TeamEventParticipation,
     TeamEventParticipationSchemas as TepSchemas,
 } from "../entities/dyn/team-event-participation";
+import { exit } from "process";
+import { IS_DEV } from "../../constants";
 import { newMatchesKey, pubsub } from "../../graphql/resolvers/pubsub";
 
 const IGNORED_MATCHES = [
@@ -41,14 +43,12 @@ function isIgnored(season: Season, eCode: string, m: MatchFtcApi): boolean {
     );
 }
 
-export async function loadAllMatches(season: Season, loadType: LoadType, eventCodes?: string[]) {
+export async function loadAllMatches(season: Season, loadType: LoadType) {
     console.info(`Loading matches for season ${season}. (${loadType})`);
 
-    let events = await eventsToFetch(season, loadType, eventCodes);
+    let events = await eventsToFetch(season, loadType);
 
     console.info(`Got ${events.length} events to fetch.`);
-
-    let failedEvents = 0;
 
     for (let i = 0; i < events.length; i++) {
         let event = events[i];
@@ -92,19 +92,6 @@ export async function loadAllMatches(season: Season, loadType: LoadType, eventCo
             allTeams = allTeams.concat(teams.map((t) => t.teamNumber));
             allTeams = [...new Set(allTeams)];
 
-            allDbMatches = uniqueBy(
-                allDbMatches,
-                (m) => `${m.eventSeason}:${m.eventCode}:${m.id}`
-            );
-            allDbScores = uniqueBy(
-                allDbScores,
-                (s) => `${s.season}:${s.eventCode}:${s.matchId}:${s.alliance}`
-            );
-            allDbTmps = uniqueBy(
-                allDbTmps,
-                (t) => `${t.season}:${t.eventCode}:${t.matchId}:${t.alliance}:${t.station}`
-            );
-
             let allDbTeps: Partial<TeamEventParticipation>[] = calculateTeamEventStats(
                 season,
                 event.code,
@@ -112,49 +99,11 @@ export async function loadAllMatches(season: Season, loadType: LoadType, eventCo
                 allDbMatches.map((m) => m.toFrontend()),
                 allTeams
             );
-            allDbTeps = uniqueBy(
-                allDbTeps,
-                (t) => `${t.season}:${t.eventCode}:${t.teamNumber}`
-            );
             await DATA_SOURCE.transaction(async (em) => {
-                await em.query(`DELETE FROM tep_${season} WHERE season = $1 AND event_code = $2`, [
-                    season,
-                    event.code,
-                ]);
-                await em.query(
-                    `DELETE FROM match_score_${season} WHERE season = $1 AND event_code = $2`,
-                    [season, event.code]
-                );
-                await em.query(
-                    `DELETE FROM team_match_participation WHERE season = $1 AND event_code = $2`,
-                    [season, event.code]
-                );
-                await em.query(
-                    `DELETE FROM match WHERE event_season = $1 AND event_code = $2`,
-                    [season, event.code]
-                );
-                if (allDbMatches.length) {
-                    await em.upsert(Match, allDbMatches, ["eventSeason", "eventCode", "id"]);
-                }
-                if (allDbTmps.length) {
-                    await em.upsert(TeamMatchParticipation, allDbTmps, [
-                        "season",
-                        "eventCode",
-                        "matchId",
-                        "alliance",
-                        "station",
-                    ]);
-                }
-                if (allDbScores.length) {
-                    await em
-                        .getRepository(MatchScoreSchemas[season])
-                        .upsert(allDbScores, ["season", "eventCode", "matchId", "alliance"]);
-                }
-                if (allDbTeps.length) {
-                    await em
-                        .getRepository(TepSchemas[season])
-                        .upsert(allDbTeps, ["season", "eventCode", "teamNumber"]);
-                }
+                await em.save(allDbMatches, { chunk: 100 });
+                await em.save(allDbTmps, { chunk: 500 });
+                await em.getRepository(MatchScoreSchemas[season]).save(allDbScores, { chunk: 100 });
+                await em.getRepository(TepSchemas[season]).save(allDbTeps, { chunk: 100 });
             });
 
             let updatedScores = allDbScores.filter((m) => "updatedAt" in m);
@@ -171,19 +120,20 @@ export async function loadAllMatches(season: Season, loadType: LoadType, eventCo
 
             console.info(`Loaded ${i + 1}/${events.length}.`);
         } catch (e) {
-            failedEvents += 1;
             console.error(`Loaded ${i + 1}/${events.length} !!! ERROR !!!`);
             console.error(e);
+
+            if (IS_DEV) {
+                exit(1);
+            }
         }
     }
 
-    if (loadType == LoadType.Full && !eventCodes?.length && failedEvents == 0) {
+    if (loadType == LoadType.Full) {
         await DataHasBeenLoaded.create({
             season,
             matches: true,
         }).save();
-    } else if (failedEvents > 0) {
-        console.error(`Skipped marking season ${season} matches loaded; ${failedEvents} events failed.`);
     }
 
     console.info(`Finished loading events.`);
@@ -199,30 +149,10 @@ function findScores(match: MatchFtcApi, scores: MatchScoresFtcApi[]): MatchScore
     );
 }
 
-async function eventsToFetch(season: Season, loadType: LoadType, eventCodes?: string[]) {
-    if (eventCodes?.length) {
-        return DATA_SOURCE.getRepository(Event)
-            .createQueryBuilder("e")
-            .select(["e.season", "e.code", "e.remote", "e.timezone"])
-            .where("e.season = :season", { season })
-            .andWhere("e.code IN (:...eventCodes)", { eventCodes })
-            .getMany();
-    }
-
+async function eventsToFetch(season: Season, loadType: LoadType) {
     let loaded = await DataHasBeenLoaded.matchesHaveBeenLoaded(season);
-    if (!loaded && loadType == LoadType.Full) {
-        return DATA_SOURCE.getRepository(Event)
-            .createQueryBuilder("e")
-            .select(["e.season", "e.code", "e.remote", "e.timezone"])
-            .leftJoin(
-                `tep_${season}`,
-                "tep",
-                "e.season = tep.season AND e.code = tep.event_code"
-            )
-            .where("e.season = :season", { season })
-            .andWhere("e.type IN (:...types)", { types: getEventTypes(EventTypeOption.Competition) })
-            .andWhere("tep.event_code IS NULL")
-            .getMany();
+    if (!loaded) {
+        return Event.findBy({ season });
     }
 
     if (loadType == LoadType.Full) {
@@ -261,8 +191,4 @@ function publishMatchUpdates(matches: Match[]) {
         let eMatches = grouped[eventCode];
         pubsub.publish(newMatchesKey(matches[0].eventSeason, eventCode), { newMatches: eMatches });
     }
-}
-
-function uniqueBy<T>(items: T[], key: (item: T) => string): T[] {
-    return [...new Map(items.map((item) => [key(item), item])).values()];
 }

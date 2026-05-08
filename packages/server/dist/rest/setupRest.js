@@ -23,7 +23,6 @@ const match_score_1 = require("../graphql/dyn/match-score");
 const typeorm_1 = require("typeorm");
 const Team_2 = require("../graphql/resolvers/Team");
 const tep_1 = require("../graphql/dyn/tep");
-const live_refresh_1 = require("../ftc-api/live-refresh");
 const pre = "/rest/v1/";
 function isSeason(season) {
     return common_1.ALL_SEASONS.indexOf(season) != -1;
@@ -53,29 +52,8 @@ function setupRest(app) {
     app.get(pre + "events/:season(\\d+)/:code/teams", eventTeams);
     app.get(pre + "events/:season(\\d+)/:code/preview", eventPreview);
     app.get(pre + "events/search/:season(\\d+)", eventSearch);
-    app.get(pre + "live-refresh", liveRefresh);
 }
 exports.setupRest = setupRest;
-function liveRefresh(req, res) {
-    return __awaiter(this, void 0, void 0, function* () {
-        let querySeason = req.query.season;
-        let season = querySeason ? +querySeason : NaN;
-        let eventCode = req.query.eventCode;
-        if (!isSeason(season)) {
-            res.status(400).send(`Invalid season ${querySeason}.`);
-            return;
-        }
-        try {
-            let result = yield (0, live_refresh_1.refreshLiveStats)(season, eventCode);
-            res.send(result);
-        }
-        catch (e) {
-            console.error("Live refresh failed.");
-            console.error(e);
-            res.status(500).send("Live refresh failed.");
-        }
-    });
-}
 function teamByNumber(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         let number = +req.params.number;

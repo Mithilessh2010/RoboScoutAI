@@ -22,7 +22,6 @@ import { frontendMSFromDB } from "../graphql/dyn/match-score";
 import { FindOptionsWhere, In } from "typeorm";
 import { getQuickStats } from "../graphql/resolvers/Team";
 import { addTypename } from "../graphql/dyn/tep";
-import { refreshLiveStats } from "../ftc-api/live-refresh";
 
 const pre = "/rest/v1/";
 
@@ -60,27 +59,6 @@ export function setupRest(app: Express) {
     app.get(pre + "events/:season(\\d+)/:code/teams", eventTeams);
     app.get(pre + "events/:season(\\d+)/:code/preview", eventPreview);
     app.get(pre + "events/search/:season(\\d+)", eventSearch);
-    app.get(pre + "live-refresh", liveRefresh);
-}
-
-async function liveRefresh(req: Request, res: Response) {
-    let querySeason = req.query.season as string | undefined;
-    let season = querySeason ? +querySeason : NaN;
-    let eventCode = req.query.eventCode as string | undefined;
-
-    if (!isSeason(season)) {
-        res.status(400).send(`Invalid season ${querySeason}.`);
-        return;
-    }
-
-    try {
-        let result = await refreshLiveStats(season, eventCode);
-        res.send(result);
-    } catch (e) {
-        console.error("Live refresh failed.");
-        console.error(e);
-        res.status(500).send("Live refresh failed.");
-    }
 }
 
 async function teamByNumber(req: Request<{ number: string }>, res: Response) {

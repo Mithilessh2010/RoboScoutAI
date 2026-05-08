@@ -1,7 +1,6 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
-/node_modules
+node_modules
+packages/*/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -11,34 +10,37 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage
 
-# next.js
-/.next/
-/out/
+# build output
+dist
+packages/*/dist
+build
+packages/web/.svelte-kit
+.next
+out
+*.tsbuildinfo
+next-env.d.ts
 
-# production
-/build
-
-# misc
+# local environment and machine files
+.env
+.env.*
+packages/*/.env
+packages/*/.env.*
+!.env.example
+!packages/*/.env.example
 .DS_Store
 *.pem
 
-# debug
+# logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+screenlog.*
 
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
+# hosted deployment metadata
 .vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
 
 # local reference repos
 ftc-scout-main/

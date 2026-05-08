@@ -16,10 +16,6 @@ const FtcApiReq_1 = require("../db/entities/FtcApiReq");
 function makeRequest(url) {
     return __awaiter(this, void 0, void 0, function* () {
         console.info(`Making a request to ${url}`);
-        if (!constants_1.FTC_API_KEY) {
-            console.error("FTC API credentials are missing. Set FTC_API_KEY or FTC_EVENTS_USERNAME/FTC_EVENTS_AUTH_KEY in packages/server/.env.");
-            return null;
-        }
         const headers = {
             Authorization: `Basic ${constants_1.FTC_API_KEY}`,
         };
@@ -35,13 +31,13 @@ function makeRequest(url) {
         }
     });
 }
-exports.throttledMakeRequest = (0, common_1.throttled)(makeRequest, constants_1.FTC_API_THROTTLE_MS);
+exports.throttledMakeRequest = (0, common_1.throttled)(makeRequest, 250);
 function getFromFtcApi(path, params = {}) {
     return __awaiter(this, void 0, void 0, function* () {
         let paramsString = Object.entries(params)
-            .map((x) => `${encodeURIComponent(x[0])}=${encodeURIComponent(String(x[1]))}`)
+            .map((x) => `${x[0]}=${x[1]}`)
             .join("&");
-        let url = `${constants_1.FTC_API_BASE_URL}/${path}?${paramsString}`;
+        let url = `https://ftc-api.firstinspires.org/v2.0/${path}?${paramsString}`;
         if (constants_1.CACHE_REQ) {
             let req = yield FtcApiReq_1.FtcApiReq.findOneBy({ url });
             if (req) {
@@ -51,11 +47,7 @@ function getFromFtcApi(path, params = {}) {
         }
         let resp = yield (0, exports.throttledMakeRequest)(url);
         if (constants_1.CACHE_REQ && !!resp) {
-            yield FtcApiReq_1.FtcApiReq.createQueryBuilder()
-                .insert()
-                .values({ url, resp })
-                .orIgnore()
-                .execute();
+            yield FtcApiReq_1.FtcApiReq.create({ url, resp }).save();
         }
         return resp;
     });

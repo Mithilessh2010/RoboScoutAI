@@ -11,12 +11,6 @@ import { writable, type Readable, type Writable, readable } from "svelte/store";
 
 let cache: Record<string, ApolloQueryResult<any>> = {};
 
-function hasQueryDefinition(doc: DocumentNode | TypedDocumentNode<any, any>): boolean {
-    return !!doc?.definitions?.some(
-        (d) => d.kind === "OperationDefinition" && (d as any).operation === "query"
-    );
-}
-
 export async function getData<Data = any, Variables extends OperationVariables = object>(
     client: ApolloClient<NormalizedCacheObject>,
     query: DocumentNode | TypedDocumentNode<Data, Variables>,
@@ -24,34 +18,17 @@ export async function getData<Data = any, Variables extends OperationVariables =
     bypassCacheKey: string | null = null,
     noCache: boolean = false
 ): Promise<Readable<ApolloQueryResult<Data> | null>> {
-    if (!hasQueryDefinition(query)) {
-        // During bootstrap we may have a stubbed graphql-operations file.
-        // Return null data so pages can render placeholders instead of throwing.
-        return readable(null);
-    }
-
     let keyWithVars = bypassCacheKey + "-" + JSON.stringify(variables);
     if (bypassCacheKey && cache[keyWithVars]) {
         return readable(cache[keyWithVars]);
     }
 
-    let queryOptions = {
+    let queryResult = client.query({
         query,
         variables,
         // No caching if on server or if bypassing apollo cache
         fetchPolicy: browser && !bypassCacheKey && !noCache ? "cache-first" : "no-cache",
-    } as Parameters<typeof client.query<Data, Variables>>[0];
-
-    if (noCache) {
-        queryOptions.context = {
-            headers: {
-                "cache-control": "no-cache",
-                "x-ftcscout-live": "1",
-            },
-        };
-    }
-
-    let queryResult = client.query(queryOptions);
+    });
 
     let result: Writable<ApolloQueryResult<Data> | null> = writable(null);
 
@@ -77,10 +54,6 @@ export function getDataSync<Data = any, Variables extends OperationVariables = o
     variables: Variables,
     bypassCacheKey: string | null = null
 ): Readable<ApolloQueryResult<Data> | null> {
-    if (!hasQueryDefinition(query)) {
-        return readable(null);
-    }
-
     let keyWithVars = bypassCacheKey + "-" + JSON.stringify(variables);
     if (bypassCacheKey && cache[keyWithVars]) {
         return readable(cache[keyWithVars]);

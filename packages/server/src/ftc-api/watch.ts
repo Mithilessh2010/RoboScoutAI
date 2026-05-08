@@ -1,4 +1,4 @@
-import { CURRENT_SEASON, PAST_SEASONS, Season } from "@ftc-scout/common";
+import { CURRENT_SEASON, PAST_SEASONS } from "@ftc-scout/common";
 import { DataHasBeenLoaded } from "../db/entities/DataHasBeenLoaded";
 import { loadAllTeams } from "../db/loaders/load-all-teams";
 import { loadAllEvents } from "../db/loaders/load-all-events";
@@ -12,62 +12,26 @@ export const LoadType = {
 };
 export type LoadType = (typeof LoadType)[keyof typeof LoadType];
 
-async function runSyncStep(label: string, fn: () => Promise<void>): Promise<boolean> {
-    try {
-        await fn();
-        return true;
-    } catch (e) {
-        console.error(`!!! ERROR LOADING ${label} !!!`);
-        console.error(e);
-        return false;
-    }
-}
-
-async function fetchSeasonBasics(season: Season) {
-    console.info(`Checking season ${season} basics.`);
-
-    if (!(await DataHasBeenLoaded.teamsHaveBeenLoaded(season))) {
-        await runSyncStep(`teams for season ${season}`, async () => {
-            await loadAllTeams(season);
-        });
-    } else {
-        console.info(`Teams already loaded.`);
-    }
-
-    if (!(await DataHasBeenLoaded.eventsHaveBeenLoaded(season))) {
-        await runSyncStep(`events for season ${season}`, async () => {
-            await loadAllEvents(season);
-        });
-    } else {
-        console.info(`Events already loaded.`);
-    }
-}
-
-export async function fetchAllSeasonBasics() {
-    await fetchSeasonBasics(CURRENT_SEASON);
-
+export async function fetchPriorSeasons() {
     for (let season of PAST_SEASONS) {
-        await fetchSeasonBasics(season);
-    }
-}
-
-export async function fetchHistoricalStats() {
-    let seasonsNewestFirst = [CURRENT_SEASON, ...[...PAST_SEASONS].reverse()];
-
-    for (let season of seasonsNewestFirst) {
-        console.info(`Checking stats load of season ${season}.`);
-
+        console.info(`Checking load of season ${season}.`);
+        if (!(await DataHasBeenLoaded.teamsHaveBeenLoaded(season))) {
+            await loadAllTeams(season);
+        } else {
+            console.info(`Teams already loaded.`);
+        }
+        if (!(await DataHasBeenLoaded.eventsHaveBeenLoaded(season))) {
+            await loadAllEvents(season);
+        } else {
+            console.info(`Events already loaded.`);
+        }
         if (!(await DataHasBeenLoaded.matchesHaveBeenLoaded(season))) {
-            await runSyncStep(`matches for season ${season}`, async () => {
-                await loadAllMatches(season, LoadType.Full);
-            });
+            await loadAllMatches(season, LoadType.Full);
         } else {
             console.info(`Matches already loaded.`);
         }
         if (!(await DataHasBeenLoaded.awardsHaveBeenLoaded(season))) {
-            await runSyncStep(`awards for season ${season}`, async () => {
-                await loadAllAwards(season, LoadType.Full);
-            });
+            await loadAllAwards(season, LoadType.Full);
         } else {
             console.info(`Awards already loaded.`);
         }
@@ -106,5 +70,5 @@ export async function watchApi() {
         setTimeout(run, MS_PER_MIN);
     };
 
-    run();
+    await run();
 }

@@ -4,25 +4,22 @@ import { TeamGQL } from "./Team";
 import { Team } from "../../db/entities/Team";
 import { BestName } from "../../db/entities/BestName";
 import { DATA_SOURCE } from "../../db/data-source";
+import { LessThan } from "typeorm";
 
 async function deleteOld() {
     try {
-        await BestName.createQueryBuilder()
-            .delete()
-            .where("vote = -1")
-            .andWhere("createdAt < NOW() - '1 day'::interval")
-            .execute();
-    } catch (err) {
-        console.error("Failed to clean up old BestName rows", err);
+        await BestName.delete({
+            vote: -1,
+            createdAt: LessThan(new Date(Date.now() - 1000 * 60 * 60 * 24)),
+        });
+    } catch (e) {
+        console.error("Failed to delete old BestName entries.");
+        console.error(e);
     }
 }
 
-setTimeout(() => {
-    void deleteOld();
-}, 1000 * 5);
-setInterval(() => {
-    void deleteOld();
-}, 1000 * 60 * 60 * 24); // Once a day.
+setTimeout(deleteOld, 1000 * 5);
+setInterval(deleteOld, 1000 * 60 * 60 * 24); // Once a day.
 
 export const BestNameGQL: GraphQLObjectType = new GraphQLObjectType<BestName>({
     name: "BestName",

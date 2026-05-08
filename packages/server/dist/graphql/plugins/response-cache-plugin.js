@@ -43,15 +43,9 @@ function responseCachePlugin(cache) {
                 let cachedResponse = null;
                 return {
                     didResolveOperation(requestContext) {
-                        var _a, _b, _c;
                         return __awaiter(this, void 0, void 0, function* () {
                             operationName = requestContext.operationName || null;
                             if (!operationName) {
-                                return;
-                            }
-                            let cacheControl = (_b = (_a = requestContext.request.http) === null || _a === void 0 ? void 0 : _a.headers.get("cache-control")) === null || _b === void 0 ? void 0 : _b.toLowerCase();
-                            let liveRefresh = (_c = requestContext.request.http) === null || _c === void 0 ? void 0 : _c.headers.get("x-ftcscout-live");
-                            if ((cacheControl === null || cacheControl === void 0 ? void 0 : cacheControl.includes("no-cache")) || liveRefresh == "1") {
                                 return;
                             }
                             const config = CACHE_CONFIG[operationName.toLowerCase()];

@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.watchApi = exports.fetchHistoricalStats = exports.fetchAllSeasonBasics = exports.LoadType = void 0;
+exports.watchApi = exports.fetchPriorSeasons = exports.LoadType = void 0;
 const common_1 = require("@ftc-scout/common");
 const DataHasBeenLoaded_1 = require("../db/entities/DataHasBeenLoaded");
 const load_all_teams_1 = require("../db/loaders/load-all-teams");
@@ -21,66 +21,30 @@ exports.LoadType = {
     Full: "Full",
     Partial: "Partial",
 };
-function runSyncStep(label, fn) {
+function fetchPriorSeasons() {
     return __awaiter(this, void 0, void 0, function* () {
-        try {
-            yield fn();
-            return true;
-        }
-        catch (e) {
-            console.error(`!!! ERROR LOADING ${label} !!!`);
-            console.error(e);
-            return false;
-        }
-    });
-}
-function fetchSeasonBasics(season) {
-    return __awaiter(this, void 0, void 0, function* () {
-        console.info(`Checking season ${season} basics.`);
-        if (!(yield DataHasBeenLoaded_1.DataHasBeenLoaded.teamsHaveBeenLoaded(season))) {
-            yield runSyncStep(`teams for season ${season}`, () => __awaiter(this, void 0, void 0, function* () {
-                yield (0, load_all_teams_1.loadAllTeams)(season);
-            }));
-        }
-        else {
-            console.info(`Teams already loaded.`);
-        }
-        if (!(yield DataHasBeenLoaded_1.DataHasBeenLoaded.eventsHaveBeenLoaded(season))) {
-            yield runSyncStep(`events for season ${season}`, () => __awaiter(this, void 0, void 0, function* () {
-                yield (0, load_all_events_1.loadAllEvents)(season);
-            }));
-        }
-        else {
-            console.info(`Events already loaded.`);
-        }
-    });
-}
-function fetchAllSeasonBasics() {
-    return __awaiter(this, void 0, void 0, function* () {
-        yield fetchSeasonBasics(common_1.CURRENT_SEASON);
         for (let season of common_1.PAST_SEASONS) {
-            yield fetchSeasonBasics(season);
-        }
-    });
-}
-exports.fetchAllSeasonBasics = fetchAllSeasonBasics;
-function fetchHistoricalStats() {
-    return __awaiter(this, void 0, void 0, function* () {
-        let seasonsNewestFirst = [common_1.CURRENT_SEASON, ...[...common_1.PAST_SEASONS].reverse()];
-        for (let season of seasonsNewestFirst) {
-            console.info(`Checking stats load of season ${season}.`);
+            console.info(`Checking load of season ${season}.`);
+            if (!(yield DataHasBeenLoaded_1.DataHasBeenLoaded.teamsHaveBeenLoaded(season))) {
+                yield (0, load_all_teams_1.loadAllTeams)(season);
+            }
+            else {
+                console.info(`Teams already loaded.`);
+            }
+            if (!(yield DataHasBeenLoaded_1.DataHasBeenLoaded.eventsHaveBeenLoaded(season))) {
+                yield (0, load_all_events_1.loadAllEvents)(season);
+            }
+            else {
+                console.info(`Events already loaded.`);
+            }
             if (!(yield DataHasBeenLoaded_1.DataHasBeenLoaded.matchesHaveBeenLoaded(season))) {
-                yield runSyncStep(`matches for season ${season}`, () => __awaiter(this, void 0, void 0, function* () {
-                    yield (0, load_all_matches_1.loadAllMatches)(season, exports.LoadType.Full);
-                }));
+                yield (0, load_all_matches_1.loadAllMatches)(season, exports.LoadType.Full);
             }
             else {
                 console.info(`Matches already loaded.`);
             }
             if (!(yield DataHasBeenLoaded_1.DataHasBeenLoaded.awardsHaveBeenLoaded(season))) {
-                yield runSyncStep(`awards for season ${season}`, () => __awaiter(this, void 0, void 0, function* () {
-                    yield (0, load_all_awards_1.loadAllAwards)(season, exports.LoadType.Full);
-                }));
+                yield (0, load_all_awards_1.loadAllAwards)(season, exports.LoadType.Full);
             }
             else {
                 console.info(`Awards already loaded.`);
@@ -88,7 +52,7 @@ function fetchHistoricalStats() {
         }
     });
 }
-exports.fetchHistoricalStats = fetchHistoricalStats;
+exports.fetchPriorSeasons = fetchPriorSeasons;
 function watchApi() {
     return __awaiter(this, void 0, void 0, function* () {
         let cycleCount = 0;
@@ -118,7 +82,7 @@ function watchApi() {
             cycleCount += 1;
             setTimeout(run, MS_PER_MIN);
         });
-        run();
+        yield run();
     });
 }
 exports.watchApi = watchApi;

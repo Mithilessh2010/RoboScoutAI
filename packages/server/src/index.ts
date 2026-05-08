@@ -11,7 +11,7 @@ import { ApolloServer } from "@apollo/server";
 import { ApolloServerPluginLandingPageLocalDefault } from "@apollo/server/plugin/landingPage/default";
 import { expressMiddleware } from "@apollo/server/express4";
 import { GQL_SCHEMA } from "./graphql/schema";
-import { fetchAllSeasonBasics, fetchHistoricalStats, watchApi } from "./ftc-api/watch";
+import { fetchPriorSeasons, watchApi } from "./ftc-api/watch";
 import { setupBannerRoutes } from "./banner";
 import { handleAnalytics } from "./analytics";
 import { setupRest } from "./rest/setupRest";
@@ -83,6 +83,11 @@ async function main() {
 
     await apolloServer.start();
 
+    // DEBUG: Test endpoint to verify Express is working
+    app.get("/health", (_req, res) => {
+        res.json({ status: "ok" });
+    });
+
     app.use("/graphql", apiLoggerMiddleware, expressMiddleware(apolloServer));
 
     app.post("/analytics", text(), handleAnalytics);
@@ -92,22 +97,20 @@ async function main() {
 
     setupBannerRoutes(app);
 
-    await new Promise<void>((resolve, reject) => {
-        httpServer.once("error", reject);
-        httpServer.listen(SERVER_PORT, () => {
-            console.info(`Server started and listening on port ${SERVER_PORT}.`);
-            httpServer.off("error", reject);
-            resolve();
-        });
+    httpServer.listen(SERVER_PORT, "0.0.0.0", () => {
+        console.info(`Server started and listening on port ${SERVER_PORT}.`);
     });
 
     if (SYNC_API) {
-        await fetchAllSeasonBasics();
-        fetchHistoricalStats().catch((e) => {
-            console.error("!!! ERROR LOADING HISTORICAL STATS !!!");
+        // Fire API sync in background without blocking server startup
+        watchApi().catch((e) => {
+            console.error("!!! ERROR IN WATCH API !!!");
             console.error(e);
         });
-        await watchApi();
+        fetchPriorSeasons().catch((e) => {
+            console.error("!!! ERROR LOADING PRIOR SEASONS !!!");
+            console.error(e);
+        });
     }
 }
 

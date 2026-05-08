@@ -16,26 +16,23 @@ const Team_1 = require("./Team");
 const Team_2 = require("../../db/entities/Team");
 const BestName_1 = require("../../db/entities/BestName");
 const data_source_1 = require("../../db/data-source");
+const typeorm_1 = require("typeorm");
 function deleteOld() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            yield BestName_1.BestName.createQueryBuilder()
-                .delete()
-                .where("vote = -1")
-                .andWhere("createdAt < NOW() - '1 day'::interval")
-                .execute();
+            yield BestName_1.BestName.delete({
+                vote: -1,
+                createdAt: (0, typeorm_1.LessThan)(new Date(Date.now() - 1000 * 60 * 60 * 24)),
+            });
         }
-        catch (err) {
-            console.error("Failed to clean up old BestName rows", err);
+        catch (e) {
+            console.error("Failed to delete old BestName entries.");
+            console.error(e);
         }
     });
 }
-setTimeout(() => {
-    void deleteOld();
-}, 1000 * 5);
-setInterval(() => {
-    void deleteOld();
-}, 1000 * 60 * 60 * 24);
+setTimeout(deleteOld, 1000 * 5);
+setInterval(deleteOld, 1000 * 60 * 60 * 24);
 exports.BestNameGQL = new graphql_1.GraphQLObjectType({
     name: "BestName",
     fields: () => ({

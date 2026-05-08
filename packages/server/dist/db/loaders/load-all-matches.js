@@ -22,6 +22,8 @@ const match_score_1 = require("../entities/dyn/match-score");
 const TeamMatchParticipation_1 = require("../entities/TeamMatchParticipation");
 const watch_1 = require("../../ftc-api/watch");
 const team_event_participation_1 = require("../entities/dyn/team-event-participation");
+const process_1 = require("process");
+const constants_1 = require("../../constants");
 const pubsub_1 = require("../../graphql/resolvers/pubsub");
 const IGNORED_MATCHES = [
     { season: common_1.Season.UltimateGoal, eventCode: "USNYEXS1", teamNumber: 14903 },
@@ -33,12 +35,11 @@ function isIgnored(season, eCode, m) {
         im.eventCode == eCode &&
         m.teams.some((t) => im.teamNumber == t.teamNumber));
 }
-function loadAllMatches(season, loadType, eventCodes) {
+function loadAllMatches(season, loadType) {
     return __awaiter(this, void 0, void 0, function* () {
         console.info(`Loading matches for season ${season}. (${loadType})`);
-        let events = yield eventsToFetch(season, loadType, eventCodes);
+        let events = yield eventsToFetch(season, loadType);
         console.info(`Got ${events.length} events to fetch.`);
-        let failedEvents = 0;
         for (let i = 0; i < events.length; i++) {
             let event = events[i];
             if (event.remote && !common_1.DESCRIPTORS[season].hasRemote)
@@ -71,41 +72,12 @@ function loadAllMatches(season, loadType, eventCodes) {
                 let allTeams = allDbMatches.flatMap((m) => m.teams.map((t) => t.teamNumber));
                 allTeams = allTeams.concat(teams.map((t) => t.teamNumber));
                 allTeams = [...new Set(allTeams)];
-                allDbMatches = uniqueBy(allDbMatches, (m) => `${m.eventSeason}:${m.eventCode}:${m.id}`);
-                allDbScores = uniqueBy(allDbScores, (s) => `${s.season}:${s.eventCode}:${s.matchId}:${s.alliance}`);
-                allDbTmps = uniqueBy(allDbTmps, (t) => `${t.season}:${t.eventCode}:${t.matchId}:${t.alliance}:${t.station}`);
                 let allDbTeps = (0, common_1.calculateTeamEventStats)(season, event.code, event.remote, allDbMatches.map((m) => m.toFrontend()), allTeams);
-                allDbTeps = uniqueBy(allDbTeps, (t) => `${t.season}:${t.eventCode}:${t.teamNumber}`);
                 yield data_source_1.DATA_SOURCE.transaction((em) => __awaiter(this, void 0, void 0, function* () {
-                    yield em.query(`DELETE FROM tep_${season} WHERE season = $1 AND event_code = $2`, [
-                        season,
-                        event.code,
-                    ]);
-                    yield em.query(`DELETE FROM match_score_${season} WHERE season = $1 AND event_code = $2`, [season, event.code]);
-                    yield em.query(`DELETE FROM team_match_participation WHERE season = $1 AND event_code = $2`, [season, event.code]);
-                    yield em.query(`DELETE FROM match WHERE event_season = $1 AND event_code = $2`, [season, event.code]);
-                    if (allDbMatches.length) {
-                        yield em.upsert(Match_1.Match, allDbMatches, ["eventSeason", "eventCode", "id"]);
-                    }
-                    if (allDbTmps.length) {
-                        yield em.upsert(TeamMatchParticipation_1.TeamMatchParticipation, allDbTmps, [
-                            "season",
-                            "eventCode",
-                            "matchId",
-                            "alliance",
-                            "station",
-                        ]);
-                    }
-                    if (allDbScores.length) {
-                        yield em
-                            .getRepository(match_score_1.MatchScoreSchemas[season])
-                            .upsert(allDbScores, ["season", "eventCode", "matchId", "alliance"]);
-                    }
-                    if (allDbTeps.length) {
-                        yield em
-                            .getRepository(team_event_participation_1.TeamEventParticipationSchemas[season])
-                            .upsert(allDbTeps, ["season", "eventCode", "teamNumber"]);
-                    }
+                    yield em.save(allDbMatches, { chunk: 100 });
+                    yield em.save(allDbTmps, { chunk: 500 });
+                    yield em.getRepository(match_score_1.MatchScoreSchemas[season]).save(allDbScores, { chunk: 100 });
+                    yield em.getRepository(team_event_participation_1.TeamEventParticipationSchemas[season]).save(allDbTeps, { chunk: 100 });
                 }));
                 let updatedScores = allDbScores.filter((m) => "updatedAt" in m);
                 let updatedTmps = allDbTmps.filter((tmp) => "updatedAt" in tmp);
@@ -118,19 +90,18 @@ function loadAllMatches(season, loadType, eventCodes) {
                 console.info(`Loaded ${i + 1}/${events.length}.`);
             }
             catch (e) {
-                failedEvents += 1;
                 console.error(`Loaded ${i + 1}/${events.length} !!! ERROR !!!`);
                 console.error(e);
+                if (constants_1.IS_DEV) {
+                    (0, process_1.exit)(1);
+                }
             }
         }
-        if (loadType == watch_1.LoadType.Full && !(eventCodes === null || eventCodes === void 0 ? void 0 : eventCodes.length) && failedEvents == 0) {
+        if (loadType == watch_1.LoadType.Full) {
             yield DataHasBeenLoaded_1.DataHasBeenLoaded.create({
                 season,
                 matches: true,
             }).save();
-        }
-        else if (failedEvents > 0) {
-            console.error(`Skipped marking season ${season} matches loaded; ${failedEvents} events failed.`);
         }
         console.info(`Finished loading events.`);
     });
@@ -143,26 +114,11 @@ function findScores(match, scores) {
             match.series == s.matchSeries &&
             match.matchNumber == s.matchNumber);
 }
-function eventsToFetch(season, loadType, eventCodes) {
+function eventsToFetch(season, loadType) {
     return __awaiter(this, void 0, void 0, function* () {
-        if (eventCodes === null || eventCodes === void 0 ? void 0 : eventCodes.length) {
-            return data_source_1.DATA_SOURCE.getRepository(Event_1.Event)
-                .createQueryBuilder("e")
-                .select(["e.season", "e.code", "e.remote", "e.timezone"])
-                .where("e.season = :season", { season })
-                .andWhere("e.code IN (:...eventCodes)", { eventCodes })
-                .getMany();
-        }
         let loaded = yield DataHasBeenLoaded_1.DataHasBeenLoaded.matchesHaveBeenLoaded(season);
-        if (!loaded && loadType == watch_1.LoadType.Full) {
-            return data_source_1.DATA_SOURCE.getRepository(Event_1.Event)
-                .createQueryBuilder("e")
-                .select(["e.season", "e.code", "e.remote", "e.timezone"])
-                .leftJoin(`tep_${season}`, "tep", "e.season = tep.season AND e.code = tep.event_code")
-                .where("e.season = :season", { season })
-                .andWhere("e.type IN (:...types)", { types: (0, common_1.getEventTypes)(common_1.EventTypeOption.Competition) })
-                .andWhere("tep.event_code IS NULL")
-                .getMany();
+        if (!loaded) {
+            return Event_1.Event.findBy({ season });
         }
         if (loadType == watch_1.LoadType.Full) {
             return data_source_1.DATA_SOURCE.getRepository(Event_1.Event)
@@ -196,8 +152,5 @@ function publishMatchUpdates(matches) {
         let eMatches = grouped[eventCode];
         pubsub_1.pubsub.publish((0, pubsub_1.newMatchesKey)(matches[0].eventSeason, eventCode), { newMatches: eMatches });
     }
-}
-function uniqueBy(items, key) {
-    return [...new Map(items.map((item) => [key(item), item])).values()];
 }
 //# sourceMappingURL=load-all-matches.js.map

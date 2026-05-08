@@ -109,26 +109,26 @@ function main() {
             ],
         });
         yield apolloServer.start();
+        app.get("/health", (_req, res) => {
+            res.json({ status: "ok" });
+        });
         app.use("/graphql", ApiReq_1.apiLoggerMiddleware, (0, express4_1.expressMiddleware)(apolloServer));
         app.post("/analytics", (0, express_1.text)(), analytics_1.handleAnalytics);
         (0, setupRest_1.setupRest)(app);
         (0, setupSitemap_1.setupSiteMap)(app);
         (0, banner_1.setupBannerRoutes)(app);
-        yield new Promise((resolve, reject) => {
-            httpServer.once("error", reject);
-            httpServer.listen(constants_1.SERVER_PORT, () => {
-                console.info(`Server started and listening on port ${constants_1.SERVER_PORT}.`);
-                httpServer.off("error", reject);
-                resolve();
-            });
+        httpServer.listen(constants_1.SERVER_PORT, "0.0.0.0", () => {
+            console.info(`Server started and listening on port ${constants_1.SERVER_PORT}.`);
         });
         if (constants_1.SYNC_API) {
-            yield (0, watch_1.fetchAllSeasonBasics)();
-            (0, watch_1.fetchHistoricalStats)().catch((e) => {
-                console.error("!!! ERROR LOADING HISTORICAL STATS !!!");
+            (0, watch_1.watchApi)().catch((e) => {
+                console.error("!!! ERROR IN WATCH API !!!");
                 console.error(e);
             });
-            yield (0, watch_1.watchApi)();
+            (0, watch_1.fetchPriorSeasons)().catch((e) => {
+                console.error("!!! ERROR LOADING PRIOR SEASONS !!!");
+                console.error(e);
+            });
         }
     });
 }

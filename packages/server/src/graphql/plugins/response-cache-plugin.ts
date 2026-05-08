@@ -53,14 +53,6 @@ export function responseCachePlugin(cache: KeyValueCache): ApolloServerPlugin {
                         return;
                     }
 
-                    let cacheControl = requestContext.request.http?.headers
-                        .get("cache-control")
-                        ?.toLowerCase();
-                    let liveRefresh = requestContext.request.http?.headers.get("x-ftcscout-live");
-                    if (cacheControl?.includes("no-cache") || liveRefresh == "1") {
-                        return;
-                    }
-
                     // Check cache config using lowercase for case-insensitive matching
                     const config = CACHE_CONFIG[operationName.toLowerCase()];
                     if (!config) {

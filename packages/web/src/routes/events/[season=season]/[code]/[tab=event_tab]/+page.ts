@@ -7,7 +7,6 @@ import type { PageLoad } from "./$types";
 import { error } from "@sveltejs/kit";
 import { DESCRIPTORS, Season } from "@ftc-scout/common";
 import { currentlyWatchedEvent, ongoingEvents } from "./watchEvent";
-import { refreshLiveStats } from "$lib/live-refresh";
 
 export const load: PageLoad = async ({ params, fetch }) => {
     let season = +params.season as Season;
@@ -15,13 +14,10 @@ export const load: PageLoad = async ({ params, fetch }) => {
         season,
         code: params.code,
     };
-    let didRefresh = await refreshLiveStats(fetch, { season, eventCode: params.code });
 
     let noCache =
-        didRefresh ||
-        (ongoingEvents.has(JSON.stringify(args)) &&
-            (args.season != currentlyWatchedEvent?.season ||
-                args.code != currentlyWatchedEvent.code));
+        ongoingEvents.has(JSON.stringify(args)) &&
+        (args.season != currentlyWatchedEvent?.season || args.code != currentlyWatchedEvent.code);
 
     let eventData = await getData(getClient(fetch), EventPageDocument, args, undefined, noCache);
 

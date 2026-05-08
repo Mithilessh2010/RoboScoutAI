@@ -1,16 +1,9 @@
 import { throttled } from "@ftc-scout/common";
-import { CACHE_REQ, FTC_API_BASE_URL, FTC_API_KEY, FTC_API_THROTTLE_MS } from "../constants";
+import { CACHE_REQ, FTC_API_KEY } from "../constants";
 import { FtcApiReq } from "../db/entities/FtcApiReq";
 
 async function makeRequest(url: string): Promise<any | null> {
     console.info(`Making a request to ${url}`);
-
-    if (!FTC_API_KEY) {
-        console.error(
-            "FTC API credentials are missing. Set FTC_API_KEY or FTC_EVENTS_USERNAME/FTC_EVENTS_AUTH_KEY in packages/server/.env."
-        );
-        return null;
-    }
 
     const headers = {
         Authorization: `Basic ${FTC_API_KEY}`,
@@ -28,13 +21,13 @@ async function makeRequest(url: string): Promise<any | null> {
     }
 }
 
-export const throttledMakeRequest = throttled(makeRequest, FTC_API_THROTTLE_MS);
+export const throttledMakeRequest = throttled(makeRequest, 250);
 
 export async function getFromFtcApi(path: string, params: Record<string, any> = {}) {
     let paramsString = Object.entries(params)
-        .map((x) => `${encodeURIComponent(x[0])}=${encodeURIComponent(String(x[1]))}`)
+        .map((x) => `${x[0]}=${x[1]}`)
         .join("&");
-    let url = `${FTC_API_BASE_URL}/${path}?${paramsString}`;
+    let url = `https://ftc-api.firstinspires.org/v2.0/${path}?${paramsString}`;
 
     if (CACHE_REQ) {
         let req = await FtcApiReq.findOneBy({ url });
@@ -47,11 +40,7 @@ export async function getFromFtcApi(path: string, params: Record<string, any> = 
     let resp = await throttledMakeRequest(url);
 
     if (CACHE_REQ && !!resp) {
-        await FtcApiReq.createQueryBuilder()
-            .insert()
-            .values({ url, resp })
-            .orIgnore()
-            .execute();
+        await FtcApiReq.create({ url, resp }).save();
     }
 
     return resp;
