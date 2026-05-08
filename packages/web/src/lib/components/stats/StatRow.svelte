@@ -27,21 +27,25 @@
     tr {
         outline: transparent 2px solid;
         outline-offset: -2px;
-        transition: outline 0.12s ease 0s;
+        transition:
+            outline 0.12s ease 0s,
+            background-color 160ms ease;
 
         cursor: pointer;
     }
 
     @supports selector(tr:has(td)) {
         tr:hover:not(:has(td.inner-hover:hover)) {
-            outline: 2px solid var(--neutral-team-color);
+            outline: 2px solid var(--palette-pink);
+            background-color: rgba(152, 37, 152, 0.08);
             z-index: var(--focused-row-zi);
         }
     }
 
     @supports not selector(tr:has(td)) {
         tr:hover {
-            outline: 2px solid var(--neutral-team-color);
+            outline: 2px solid var(--palette-pink);
+            background-color: rgba(152, 37, 152, 0.08);
             z-index: var(--focused-row-zi);
         }
     }

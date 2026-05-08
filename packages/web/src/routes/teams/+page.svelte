@@ -51,7 +51,7 @@
     }
 </script>
 
-<Head title="Teams | FTCScout" description="Find and search for FTC teams." />
+<Head title="Teams | RoboScoutAI" description="Find and search for FTC teams." />
 
 <WidthProvider>
     <Card>
@@ -151,8 +151,9 @@
     a {
         color: inherit;
 
-        padding: var(--md-pad) 0;
+        padding: var(--md-pad);
         border-radius: 8px;
+        border: 1px solid transparent;
 
         display: grid;
         grid-template-columns: 6ch 1fr;
@@ -160,11 +161,17 @@
         gap: var(--sm-gap) var(--lg-gap);
 
         font-size: var(--lg-font-size);
+        transition:
+            background-color 180ms ease,
+            border-color 180ms ease,
+            transform 180ms ease;
     }
 
     a:hover {
         text-decoration: none;
         background: var(--hover-color);
+        border-color: rgba(228, 145, 201, 0.24);
+        transform: translateY(-1px);
     }
 
     .number {

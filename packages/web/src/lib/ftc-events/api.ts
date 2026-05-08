@@ -3,7 +3,7 @@
  * High-level functions for all FTC API endpoints
  */
 
-import { ftcEventsFetch, buildQueryString, type FtcApiResponse } from './client';
+import { ftcEventsFetch, buildQueryString } from './client';
 
 // API Response types
 export interface ApiIndex {

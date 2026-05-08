@@ -348,10 +348,170 @@ body.dark .render-light {
 
 /* --- Resets --- */
 
+/* --- RoboScoutAI visual theme --- */
+
+body,
+body.dark,
+body:not(.light) {
+    --palette-navy: #15173d;
+    --palette-purple: #982598;
+    --palette-pink: #e491c9;
+    --palette-off-white: #f1e9e9;
+
+    --fg-color-vs: 31, 34, 71;
+    --fg-color: rgb(var(--fg-color-vs));
+    --bg-color: var(--palette-navy);
+
+    --modal-bg-color: rgba(7, 8, 24, 0.72);
+
+    --theme-color-vs: 152, 37, 152;
+    --theme-color: rgb(var(--theme-color-vs));
+    --theme-color-opacity: 0.82;
+    --inline-theme-color: var(--palette-pink);
+
+    --hover-color: rgba(152, 37, 152, 0.14);
+    --tab-hover-color: rgba(228, 145, 201, 0.1);
+
+    --sep-color: rgba(241, 233, 233, 0.14);
+    --sep-hover-color: rgba(228, 145, 201, 0.48);
+
+    --zebra-stripe-color: rgba(241, 233, 233, 0.045);
+    --zebra-stripe-opacity: rgba(241, 233, 233, 0.045);
+
+    --fade-shadow: rgba(228, 145, 201, 0.18);
+
+    --alert-bar-color: var(--palette-purple);
+
+    --text-color: var(--palette-off-white);
+    --secondary-text-color: rgba(241, 233, 233, 0.72);
+    --grayed-out-text-color: rgba(241, 233, 233, 0.5);
+    --theme-text-color: var(--palette-off-white);
+    --sidebar-text-color: rgba(241, 233, 233, 0.8);
+
+    --inverse-bg-color: var(--palette-off-white);
+    --inverse-text-color: var(--palette-navy);
+    --inverse-secondary-text-color: rgba(21, 23, 61, 0.72);
+
+    --form-bg-color: rgba(21, 23, 61, 0.78);
+    --form-hover-bg-color: rgba(152, 37, 152, 0.18);
+    --form-click-bg-color: rgba(152, 37, 152, 0.28);
+    --form-disabled-opacity: 0.52;
+
+    --team-color-transparency: 0.2;
+    --red-team-color-vs: 206, 71, 91;
+    --blue-team-color-vs: 73, 119, 214;
+    --neutral-team-color-vs: 152, 37, 152;
+    --red-team-bg-color: rgba(var(--red-team-color-vs), var(--team-color-transparency));
+    --blue-team-bg-color: rgba(var(--blue-team-color-vs), var(--team-color-transparency));
+    --neutral-team-bg-color: rgba(var(--neutral-team-color-vs), var(--team-color-transparency));
+    --red-team-text-color: #ff8fa1;
+    --blue-team-text-color: #9bbcff;
+    --neutral-team-text-color: var(--palette-pink);
+
+    --red-stat-color-vs: 206, 71, 91;
+    --blue-stat-color-vs: 73, 119, 214;
+    --light-blue-stat-color-vs: 84, 146, 196;
+    --purple-stat-color-vs: 152, 37, 152;
+    --green-stat-color-vs: 60, 156, 112;
+    --red-stat-color: rgb(var(--red-stat-color-vs));
+    --red-stat-bg-color: rgba(var(--red-stat-color-vs), var(--stat-transparency));
+    --blue-stat-color: rgb(var(--blue-stat-color-vs));
+    --blue-stat-bg-color: rgba(var(--blue-stat-color-vs), var(--stat-transparency));
+    --light-blue-stat-color: rgb(var(--light-blue-stat-color-vs));
+    --light-blue-stat-bg-color: rgba(var(--light-blue-stat-color-vs), var(--stat-transparency));
+    --purple-stat-color: rgb(var(--purple-stat-color-vs));
+    --purple-stat-bg-color: rgba(var(--purple-stat-color-vs), var(--stat-transparency));
+    --green-stat-color: rgb(var(--green-stat-color-vs));
+    --green-stat-bg-color: rgba(var(--green-stat-color-vs), var(--stat-transparency));
+
+    --thick-border-width: 1px;
+
+    color-scheme: dark;
+}
+
+body.light {
+    --palette-navy: #15173d;
+    --palette-purple: #982598;
+    --palette-pink: #e491c9;
+    --palette-off-white: #f1e9e9;
+
+    --fg-color-vs: 255, 250, 250;
+    --fg-color: rgb(var(--fg-color-vs));
+    --bg-color: var(--palette-off-white);
+
+    --modal-bg-color: rgba(21, 23, 61, 0.42);
+
+    --theme-color-vs: 152, 37, 152;
+    --theme-color: rgb(var(--theme-color-vs));
+    --theme-color-opacity: 0.9;
+    --inline-theme-color: var(--palette-purple);
+
+    --hover-color: rgba(152, 37, 152, 0.09);
+    --tab-hover-color: rgba(152, 37, 152, 0.07);
+
+    --sep-color: rgba(21, 23, 61, 0.14);
+    --sep-hover-color: rgba(152, 37, 152, 0.4);
+
+    --zebra-stripe-color: rgba(21, 23, 61, 0.045);
+    --zebra-stripe-opacity: rgba(21, 23, 61, 0.045);
+
+    --fade-shadow: rgba(21, 23, 61, 0.16);
+
+    --alert-bar-color: var(--palette-purple);
+
+    --text-color: var(--palette-navy);
+    --secondary-text-color: rgba(21, 23, 61, 0.68);
+    --grayed-out-text-color: rgba(21, 23, 61, 0.48);
+    --theme-text-color: var(--palette-off-white);
+    --sidebar-text-color: rgba(241, 233, 233, 0.86);
+
+    --inverse-bg-color: var(--palette-navy);
+    --inverse-text-color: var(--palette-off-white);
+    --inverse-secondary-text-color: rgba(241, 233, 233, 0.72);
+
+    --form-bg-color: rgba(255, 250, 250, 0.82);
+    --form-hover-bg-color: rgba(152, 37, 152, 0.1);
+    --form-click-bg-color: rgba(152, 37, 152, 0.16);
+    --form-disabled-opacity: 0.58;
+
+    --team-color-transparency: 0.14;
+    --red-team-color-vs: 190, 52, 73;
+    --blue-team-color-vs: 50, 95, 190;
+    --neutral-team-color-vs: 152, 37, 152;
+    --red-team-bg-color: rgba(var(--red-team-color-vs), var(--team-color-transparency));
+    --blue-team-bg-color: rgba(var(--blue-team-color-vs), var(--team-color-transparency));
+    --neutral-team-bg-color: rgba(var(--neutral-team-color-vs), var(--team-color-transparency));
+    --red-team-text-color: #b93049;
+    --blue-team-text-color: #315fbe;
+    --neutral-team-text-color: var(--palette-purple);
+
+    --red-stat-color-vs: 190, 52, 73;
+    --blue-stat-color-vs: 50, 95, 190;
+    --light-blue-stat-color-vs: 58, 126, 172;
+    --purple-stat-color-vs: 152, 37, 152;
+    --green-stat-color-vs: 44, 132, 91;
+    --red-stat-color: rgb(var(--red-stat-color-vs));
+    --red-stat-bg-color: rgba(var(--red-stat-color-vs), var(--stat-transparency));
+    --blue-stat-color: rgb(var(--blue-stat-color-vs));
+    --blue-stat-bg-color: rgba(var(--blue-stat-color-vs), var(--stat-transparency));
+    --light-blue-stat-color: rgb(var(--light-blue-stat-color-vs));
+    --light-blue-stat-bg-color: rgba(var(--light-blue-stat-color-vs), var(--stat-transparency));
+    --purple-stat-color: rgb(var(--purple-stat-color-vs));
+    --purple-stat-bg-color: rgba(var(--purple-stat-color-vs), var(--stat-transparency));
+    --green-stat-color: rgb(var(--green-stat-color-vs));
+    --green-stat-bg-color: rgba(var(--green-stat-color-vs), var(--stat-transparency));
+
+    --thick-border-width: 1px;
+
+    color-scheme: light;
+}
+
 body {
     color: var(--text-color);
     font-size: var(--md-font-size);
     font-family: var(--font-family);
+    line-height: 1.45;
+    accent-color: var(--palette-pink);
 }
 
 * {
@@ -362,16 +522,82 @@ body {
 
 h1 {
     font-size: var(--xl-font-size);
+    letter-spacing: 0;
 }
 
 h2 {
     font-size: var(--vl-font-size);
+    letter-spacing: 0;
 }
 
 a {
+    color: var(--palette-pink);
     text-decoration: none;
+    transition:
+        color 180ms ease,
+        background-color 180ms ease,
+        border-color 180ms ease,
+        opacity 180ms ease;
 }
 
 a:hover {
+    color: var(--palette-off-white);
     text-decoration: underline;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid var(--sep-color);
+}
+
+::selection {
+    background: rgba(228, 145, 201, 0.32);
+    color: var(--palette-off-white);
+}
+
+:focus-visible {
+    outline: 2px solid var(--palette-pink);
+    outline-offset: 2px;
+}
+
+table {
+    box-shadow: 0 18px 45px rgba(5, 6, 20, 0.2);
+}
+
+thead,
+th {
+    letter-spacing: 0;
+}
+
+tbody tr {
+    transition:
+        background-color 160ms ease,
+        outline-color 160ms ease,
+        transform 160ms ease;
+}
+
+tbody tr:hover {
+    background-color: rgba(152, 37, 152, 0.08);
+}
+
+@keyframes page-enter {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
 }

@@ -211,6 +211,15 @@
 
         border: 1px solid var(--sep-color);
         border-radius: 8px;
+        background: var(--fg-color);
+        overflow: hidden;
+        transition:
+            border-color 180ms ease,
+            box-shadow 180ms ease;
+    }
+
+    table:hover {
+        border-color: rgba(228, 145, 201, 0.24);
     }
 
     tbody {

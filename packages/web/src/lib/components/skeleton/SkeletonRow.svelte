@@ -32,10 +32,10 @@
         background: linear-gradient(
                 to right,
                 rgba(255, 255, 255, 0),
-                rgba(var(--fg-color-vs), 0.25) 50%,
+                rgba(228, 145, 201, 0.2) 50%,
                 rgba(255, 255, 255, 0) 80%
             ),
-            var(--bg-color);
+            rgba(241, 233, 233, 0.07);
         background-repeat: repeat-y;
         background-size: 10em 200px;
         background-position: 0 0;

@@ -61,11 +61,11 @@
 </script>
 
 <Head
-    title={!!team ? `${team.number} ${team.name} | FTCScout` : "Team Page | FtcScout"}
+    title={!!team ? `${team.number} ${team.name} | RoboScoutAI` : "Team Page | RoboScoutAI"}
     description={!!team
         ? `Information and matches for team ${team.number} ${team.name}.`
         : `Information and matches for team ${$page.params.number}`}
-    image="https://api.ftcscout.org/banners/teams/{$page.params.number}"
+    image="/img/roboscoutai-logo.svg"
     canonical={`/teams/${$page.params.number}`}
 />
 

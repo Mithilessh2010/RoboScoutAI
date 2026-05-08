@@ -4,7 +4,7 @@
     import Head from "$lib/components/Head.svelte";
 </script>
 
-<Head title="FIRST | FTCScout" description="How to get started competing in FIRST" />
+<Head title="FIRST | RoboScoutAI" description="How to get started competing in FIRST" />
 
 <WidthProvider width={"1000px"}>
     <Card>
@@ -12,12 +12,10 @@
 
         <div class="rest">
             <p>
-                On occasion, we recieve emails from mildly confused parents asking how to enroll
-                their kids in FIRST. My best guess for why this happens is that the parent and kid
-                come across, or are invited to, an FTC event, and are told that the scores are
-                available on FTCScout. After spending the day watching robots and following the
-                scores on FTCScout, their kid asks to join, and they end up hitting the email
-                button. Reasonable enough.
+                On occasion, mildly confused parents ask how to enroll their kids in FIRST. My best
+                guess for why this happens is that the parent and kid
+                come across, or are invited to, an FTC event, and start following the teams, events,
+                and scores here.
             </p>
             <p>
                 Usually, we direct them to the FIRST website or tell them how to find teams in their
@@ -141,8 +139,7 @@
                     href="https://help.firstinspires.org"
                     target="_blank"
                     rel="noopener">here</a
-                >, or you can chat with people in the FTC (unofficial) Discord Chat
-                <a href="https://discord.com/invite/ftc" target="_blank" rel="noopener">here</a>.
+                >.
             </p>
         </div>
     </Card>

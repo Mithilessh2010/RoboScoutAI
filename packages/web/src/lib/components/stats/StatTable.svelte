@@ -56,8 +56,8 @@
         /* Adapted from: https://lea.verou.me/2012/04/background-attachment-local/ */
         --fade-len: 120px;
         --shadow-len: 25px;
-        background: linear-gradient(to right, var(--fg-color) 30%, rgba(255, 255, 255, 0)),
-            linear-gradient(to left, var(--fg-color), rgba(255, 255, 255, 0)) 100% 0,
+        background: linear-gradient(to right, var(--fg-color) 30%, rgba(21, 23, 61, 0)),
+            linear-gradient(to left, var(--fg-color), rgba(21, 23, 61, 0)) 100% 0,
             linear-gradient(to right, var(--fade-shadow), var(--fg-color)),
             linear-gradient(to left, var(--fade-shadow), var(--fg-color)) 100% 0;
         background-repeat: no-repeat;
@@ -65,6 +65,13 @@
         background-size: var(--fade-len) 100%, var(--fade-len) 100%, var(--shadow-len) 100%,
             var(--shadow-len) 100%;
         background-attachment: local, local, scroll, scroll;
+        transition:
+            border-color 180ms ease,
+            box-shadow 180ms ease;
+    }
+
+    table:hover {
+        border-color: rgba(228, 145, 201, 0.24);
     }
 
     table :global(thead) {

@@ -1,6 +1,5 @@
 <script lang="ts">
     import { page } from "$app/stores";
-    import { EMAIL } from "../constants";
     import Card from "./Card.svelte";
     import Head from "./Head.svelte";
     import WidthProvider from "./WidthProvider.svelte";
@@ -12,7 +11,7 @@
     $: computedMessage = message ?? $page?.error?.message;
 </script>
 
-<Head title="FTCScout" />
+<Head title="RoboScoutAI" />
 
 <WidthProvider width="800px">
     <Card vis={false}>
@@ -20,20 +19,14 @@
             {#if computedStatus == 404 && computedMessage == "Not Found"}
                 <a href="/teams/404"><h1>{computedStatus}</h1></a>
                 <p class="top">Not Found: {$page.url.pathname}</p>
-                <p class="bottom">
-                    The page you are looking for doesn't exist. If we linked you here, reach out at
-                    <a href="mailto:{EMAIL}">{EMAIL}</a>.
-                </p>
+                <p class="bottom">The page you are looking for doesn't exist.</p>
             {:else if computedStatus == 404}
                 <h1>{computedStatus}</h1>
                 <p class="top">{computedMessage}</p>
             {:else}
                 <h1>{computedStatus}</h1>
                 <p class="top">{computedMessage}</p>
-                <p class="bottom">
-                    There appears to be an error. If the issue persists, reach out at
-                    <a href="mailto:{EMAIL}">{EMAIL}</a>.
-                </p>
+                <p class="bottom">There appears to be an error.</p>
             {/if}
 
             <p class="help"><slot /></p>

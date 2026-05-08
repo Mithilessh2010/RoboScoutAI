@@ -11,7 +11,6 @@
     import Head from "$lib/components/Head.svelte";
     import { createTippy } from "svelte-tippy";
     import { tippyTheme } from "$lib/components/nav/DarkModeToggle.svelte";
-    import Sponsor from "$lib/components/nav/Sponsor.svelte";
     import Select from "$lib/components/ui/form/Select.svelte";
     import AlertBar from "$lib/components/nav/AlertBar.svelte";
 
@@ -30,7 +29,7 @@
     let wrMode = "wo-penalties";
 </script>
 
-<Head title="FTCScout" />
+<Head title="RoboScoutAI" />
 
 <AlertBar
     message="Watch the FTC World Championships live on YouTube!"
@@ -40,8 +39,8 @@
 <WidthProvider>
     <Card vis={false}>
         <div class="title">
-            <h1>FTC<em>Scout</em></h1>
-            <p>A new way to track and scout <em>FIRST</em> Tech Challenge</p>
+            <img src="/img/roboscoutai-logo.svg" alt="RoboScoutAI" class="hero-logo" />
+            <p>FTC scouting, stats, and strategy — upgraded.</p>
         </div>
 
         <div class="infos">
@@ -133,12 +132,6 @@
             </div>
         </div>
     </Card>
-
-    <Card vis={false}>
-        <div class="sponsor">
-            <Sponsor />
-        </div>
-    </Card>
 </WidthProvider>
 
 <style>
@@ -148,12 +141,15 @@
         align-items: center;
 
         margin-bottom: var(--xl-gap);
+        text-align: center;
     }
 
-    h1 {
-        font-weight: 600;
-        font-size: calc(var(--xl-font-size) * 1.5);
-        margin: var(--md-gap);
+    .hero-logo {
+        width: min(520px, 92vw);
+        max-height: 310px;
+        object-fit: contain;
+        margin-bottom: var(--md-gap);
+        filter: drop-shadow(0 22px 42px rgba(5, 6, 20, 0.32));
     }
 
     .title p {
@@ -185,11 +181,18 @@
         font-size: var(--lg-font-size);
 
         color: inherit;
+        transition:
+            background-color 180ms ease,
+            border-color 180ms ease,
+            box-shadow 180ms ease,
+            transform 180ms ease;
     }
 
     .info-box:hover {
         text-decoration: none;
         background: var(--hover-color);
+        border-color: rgba(228, 145, 201, 0.32);
+        transform: translateY(-2px);
     }
 
     .info-box .icon {
@@ -239,6 +242,7 @@
         border-radius: 8px;
         border: 1px solid var(--sep-color);
         background: var(--fg-color);
+        box-shadow: inset 0 1px 0 rgba(241, 233, 233, 0.04);
 
         margin-bottom: var(--vl-gap);
     }
@@ -289,15 +293,12 @@
         border-radius: 8px;
         border: 1px solid var(--sep-color);
         padding: var(--lg-pad);
+        box-shadow: inset 0 1px 0 rgba(241, 233, 233, 0.04);
     }
 
     .wr-merged {
         display: flex;
         flex-direction: column;
-    }
-
-    .wr-section + .wr-section {
-        margin-top: var(--lg-gap);
     }
 
     .wr h2 {
@@ -319,21 +320,8 @@
         margin-bottom: var(--md-gap);
     }
 
-    .wr + .wr {
-        margin-top: var(--vl-gap);
-    }
-
     .help {
         font-size: calc(var(--md-font-size));
     }
 
-    .sponsor {
-        display: none;
-    }
-
-    @media (max-width: 1500px) {
-        .sponsor {
-            display: block;
-        }
-    }
 </style>

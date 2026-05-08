@@ -28,8 +28,9 @@
         bottom: 0;
         width: var(--sidebar-size);
 
-        background: var(--fg-color);
+        background: rgba(21, 23, 61, 0.96);
         border-right: 1px solid var(--sep-color);
+        box-shadow: 16px 0 38px rgba(5, 6, 20, 0.2);
 
         padding: var(--md-pad);
         padding-top: var(--lg-pad);

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" role="img" aria-labelledby="title desc">
+    <title id="title">RoboScoutAI logo</title>
+    <desc id="desc">A purple and pink RoboScoutAI mark with a stylized R, scouting signal arcs, and wordmark.</desc>
+    <defs>
+        <linearGradient id="markGradient" x1="236" y1="138" x2="628" y2="440" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#B832C6" />
+            <stop offset="0.45" stop-color="#982598" />
+            <stop offset="0.72" stop-color="#E491C9" />
+            <stop offset="1" stop-color="#7F2086" />
+        </linearGradient>
+        <linearGradient id="wordGradient" x1="122" y1="520" x2="826" y2="520" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#F1E9E9" />
+            <stop offset="0.73" stop-color="#F1E9E9" />
+            <stop offset="0.88" stop-color="#E491C9" />
+            <stop offset="1" stop-color="#982598" />
+        </linearGradient>
+        <linearGradient id="circuitGradient" x1="278" y1="326" x2="278" y2="452" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#E491C9" />
+            <stop offset="1" stop-color="#982598" />
+        </linearGradient>
+        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+            <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#050614" flood-opacity="0.38" />
+        </filter>
+    </defs>
+
+    <g filter="url(#softShadow)">
+        <path
+            fill="url(#markGradient)"
+            d="M256 138h150c88 0 158 70 158 158 0 55-28 103-70 132l91 94H468l-75-78h-40v78h-73v-98l39-38v-37l-63-64V138Zm73 73v44l63 64v54h28c44 0 79-35 79-78s-35-84-93-84h-77Z"
+        />
+        <path
+            fill="#E491C9"
+            opacity="0.92"
+            d="M406 138c88 0 158 70 158 158h-73c0-43-35-85-85-85V138Z"
+        />
+        <circle cx="401" cy="296" r="22" fill="#E491C9" />
+        <path
+            d="M435 250c24 7 42 25 50 49"
+            fill="none"
+            stroke="#E491C9"
+            stroke-width="18"
+            stroke-linecap="butt"
+        />
+        <path
+            d="M429 217c46 6 83 40 94 85"
+            fill="none"
+            stroke="#F1E9E9"
+            stroke-width="18"
+            stroke-linecap="butt"
+        />
+        <path
+            d="M286 365v116"
+            fill="none"
+            stroke="url(#circuitGradient)"
+            stroke-width="7"
+            stroke-linecap="round"
+        />
+        <circle cx="286" cy="356" r="16" fill="#15173D" stroke="#E491C9" stroke-width="8" />
+        <circle cx="286" cy="492" r="16" fill="#15173D" stroke="#E491C9" stroke-width="8" />
+    </g>
+
+    <text
+        x="480"
+        y="585"
+        text-anchor="middle"
+        font-family="Inter, Arial, sans-serif"
+        font-size="100"
+        font-weight="800"
+        letter-spacing="-2"
+        fill="url(#wordGradient)"
+    >RoboScoutAI</text>
+</svg>

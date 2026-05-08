@@ -4,7 +4,7 @@
     import Head from "$lib/components/Head.svelte";
 </script>
 
-<Head title="OPR | FTCScout" description="What OPR is, how it works, and when to use it." />
+<Head title="OPR | RoboScoutAI" description="What OPR is, how it works, and when to use it." />
 
 <WidthProvider width={"1000px"}>
     <Card>
@@ -134,7 +134,7 @@
                 <img
                     class="statsimg"
                     src="/img/statsbutton.png"
-                    alt="A screenshot of FTCScout's Season Records page, with an orange arrow pointing to the statistics button."
+                    alt="A screenshot of the Season Records page, with an orange arrow pointing to the statistics button."
                 />
             </div>
         </div></Card

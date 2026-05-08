@@ -34,10 +34,14 @@
         aspect-ratio: 1 / 1;
         padding: var(--sm-pad);
         border-radius: var(--pill-border-radius);
+        transition:
+            background-color 180ms ease,
+            transform 140ms ease;
     }
 
     button:hover {
-        background: rgba(0, 0, 0, 0.2);
+        background: rgba(228, 145, 201, 0.14);
+        transform: translateY(-1px);
     }
 
     @media (min-width: 1500px) {

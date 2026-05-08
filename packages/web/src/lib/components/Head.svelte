@@ -4,8 +4,8 @@
 
     export let title: string;
     export let description: string =
-        "FTCScout is a new way to track and scout FIRST Tech Challenge, providing advanced statistics and data on all aspects of FTC.";
-    export let image = "/head/banner.png";
+        "RoboScoutAI is a premium FTC scouting and statistics platform for teams, events, matches, rankings, and strategy.";
+    export let image = "/img/roboscoutai-logo.svg";
     export let url: string | null = null;
     export let canonical: string | null = null;
 
@@ -21,14 +21,13 @@
         rel="stylesheet"
     />
 
-    <link rel="apple-touch-icon" sizes="180x180" href="/head/apple-touch-icon.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/head/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/head/favicon-16x16.png" />
+    <link rel="apple-touch-icon" href="/img/roboscoutai-logo.svg" />
+    <link rel="icon" type="image/svg+xml" href="/img/roboscoutai-logo.svg" />
     <link rel="manifest" href="/head/site.webmanifest" />
-    <link rel="mask-icon" href="/head/safari-pinned-tab.svg" color="#2c666e" />
-    <meta name="msapplication-TileColor" content="#2c666e" />
-    <meta name="theme-color" content="#ffffff" />
-    <meta property="og:site_name" content="FTCScout" />
+    <link rel="mask-icon" href="/head/safari-pinned-tab.svg" color="#982598" />
+    <meta name="msapplication-TileColor" content="#15173D" />
+    <meta name="theme-color" content="#15173D" />
+    <meta property="og:site_name" content="RoboScoutAI" />
 
     <title>{IS_DEV ? "*" : ""}{title}</title>
     <meta name="description" content={description} />
@@ -37,7 +36,7 @@
     <meta property="og:description" content={description} />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#2c666e" />
+    <meta name="theme-color" content="#15173D" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="620" />
     <meta property="og:image:type" content="image/png" />
@@ -45,7 +44,7 @@
     <meta property="og:url" content={url ?? $page.url.toString()} />
 
     {#if canonical}
-        <link rel="canonical" href={"https://ftcscout.org" + canonical} />
+        <link rel="canonical" href={$page.url.origin + canonical} />
     {/if}
 
     <slot />

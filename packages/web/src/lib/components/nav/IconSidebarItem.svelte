@@ -20,16 +20,24 @@
         color: var(--sidebar-text-color);
         font-size: 16px;
 
-        border: 2px solid var(--sep-color);
+        border: 1px solid var(--sep-color);
 
         aspect-ratio: 1/1;
         display: flex;
         align-items: center;
         justify-content: center;
+        transition:
+            background-color 180ms ease,
+            border-color 180ms ease,
+            color 180ms ease,
+            transform 180ms ease;
     }
 
     a:hover {
         background: var(--hover-color);
+        border-color: var(--palette-pink);
+        color: var(--palette-off-white);
         text-decoration: none;
+        transform: translateY(-1px);
     }
 </style>

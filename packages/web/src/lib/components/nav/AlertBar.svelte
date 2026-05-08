@@ -52,12 +52,14 @@
         gap: var(--md-gap);
         padding: var(--md-pad) var(--lg-pad);
 
-        /* background: var(--alert-bar-color); */
-        background: var(--blue-team-text-color);
+        background: rgba(152, 37, 152, 0.82);
+        color: var(--palette-off-white);
         font-size: var(--lg-font-size);
         font-weight: bold;
 
         border-radius: 8px;
+        border: 1px solid rgba(228, 145, 201, 0.35);
+        box-shadow: 0 12px 28px rgba(5, 6, 20, 0.22);
     }
 
     .show {
@@ -81,11 +83,15 @@
         display: inline-block;
         cursor: pointer;
         border-radius: var(--pill-border-radius);
-        /* background: var(--alert-bar-color); */
-        background: var(--blue-team-text-color);
+        background: transparent;
+        transition:
+            background-color 180ms ease,
+            transform 140ms ease;
     }
 
     :is(a, button):hover {
-        filter: brightness(0.9);
+        background: rgba(241, 233, 233, 0.12);
+        filter: none;
+        transform: translateY(-1px);
     }
 </style>

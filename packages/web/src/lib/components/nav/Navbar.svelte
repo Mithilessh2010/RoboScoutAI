@@ -27,7 +27,10 @@
 
         padding: var(--md-pad);
 
-        background: var(--theme-color);
+        background: rgba(21, 23, 61, 0.92);
+        border-bottom: 1px solid rgba(228, 145, 201, 0.22);
+        box-shadow: 0 12px 34px rgba(5, 6, 20, 0.28);
+        backdrop-filter: blur(12px);
         z-index: var(--navbar-zi);
 
         display: flex;

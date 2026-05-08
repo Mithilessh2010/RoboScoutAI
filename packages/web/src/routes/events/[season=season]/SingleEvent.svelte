@@ -64,10 +64,16 @@
         text-overflow: ellipsis;
 
         cursor: pointer;
+        border: 1px solid transparent;
+        transition:
+            background-color 180ms ease,
+            border-color 180ms ease,
+            color 180ms ease;
     }
 
     a:hover {
         background: var(--hover-color);
+        border-color: rgba(228, 145, 201, 0.2);
         text-decoration: none;
     }
 

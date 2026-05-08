@@ -56,7 +56,7 @@
 
     function setTheme(next: "light" | "dark") {
         $theme = {
-            preference: getSystemColorScheme() == next ? ("system" as const) : next,
+            preference: next,
             rendered: next,
         };
         handleThemeChange($theme);
@@ -65,31 +65,68 @@
 
 <form method="POST" action="/toggle-theme">
     <button
-        class="render-light"
+        type="button"
+        class:active={$theme.rendered == "light"}
+        aria-pressed={$theme.rendered == "light"}
+        aria-label="Use light mode"
         name="currTheme"
-        value="light"
-        on:click|preventDefault={() => setTheme("dark")}
+        value="dark"
+        on:click={() => setTheme("light")}
     >
-        <Fa icon={faMoon} fw size="1.25x" translateX="-0.25" style="font-size: 24px" />
+        <Fa icon={faSun} fw size="1.05x" />
     </button>
 
     <button
-        class="render-dark"
+        type="button"
+        class:active={$theme.rendered == "dark"}
+        aria-pressed={$theme.rendered == "dark"}
+        aria-label="Use dark mode"
         name="currTheme"
-        value="dark"
-        on:click|preventDefault={() => setTheme("light")}
+        value="light"
+        on:click={() => setTheme("dark")}
     >
-        <Fa icon={faSun} fw size="1.25x" translateX="-0.25" style="font-size: 24px" />
+        <Fa icon={faMoon} fw size="1.05x" />
     </button>
 </form>
 
 <style>
+    form {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 3px;
+        border: 1px solid rgba(228, 145, 201, 0.28);
+        border-radius: var(--pill-border-radius);
+        background: rgba(21, 23, 61, 0.52);
+    }
+
     button {
+        width: 32px;
+        height: 32px;
         padding: 0;
         border: none;
-        background: none;
+        border-radius: var(--pill-border-radius);
+        background: transparent;
         color: var(--theme-text-color);
 
         cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition:
+            background-color 180ms ease,
+            color 180ms ease,
+            transform 140ms ease;
+    }
+
+    button:hover {
+        color: var(--palette-pink);
+        transform: translateY(-1px);
+    }
+
+    button.active {
+        background: var(--theme-color);
+        color: var(--palette-off-white);
+        box-shadow: 0 6px 16px rgba(152, 37, 152, 0.24);
     }
 </style>

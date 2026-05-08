@@ -187,13 +187,13 @@
 </script>
 
 <Head
-    title={!!event ? `${event.name} | FTCScout` : "Event Page | FtcScout"}
+    title={!!event ? `${event.name} | RoboScoutAI` : "Event Page | RoboScoutAI"}
     description={!!event
         ? `Matches, awards, and statistics for the ${new Date(event.start).getFullYear()} ${
               event.name
           }.`
         : "Matches, awards, and statistics for an event."}
-    image="https://api.ftcscout.org/banners/events/{$page.params.season}/{$page.params.code}"
+    image="/img/roboscoutai-logo.svg"
     canonical={`/events/${season}/${$page.params.code}`}
 />
 
@@ -406,14 +406,14 @@
     }
 
     .livestream-inline-toggle:hover {
-        color: var(--text);
+        color: var(--palette-pink);
     }
 
     .livestream-list {
         display: flex;
         flex-direction: column;
-        gap: var(--xs-gap);
-        border-top: 2px solid var(--sep-color);
+        gap: var(--sm-gap);
+        border-top: 1px solid var(--sep-color);
         padding-top: var(--md-gap);
     }
 
@@ -426,6 +426,11 @@
         border-left: 3px solid transparent;
         border-radius: 2px;
         transition: all 0.15s ease;
+    }
+
+    .livestream-row:hover {
+        border-left-color: var(--palette-pink);
+        background: rgba(152, 37, 152, 0.08);
     }
 
     .livestream-day {

@@ -54,6 +54,7 @@
 
     .content-wrapper {
         background: var(--fg-color);
+        border: 1px solid rgba(228, 145, 201, 0.22);
 
         border-radius: 8px;
 
@@ -64,7 +65,8 @@
         max-width: 100%;
         position: relative;
 
-        box-shadow: -2px 2px 10px 3px rgba(0, 0, 0, 10%);
+        box-shadow: 0 24px 64px rgba(5, 6, 20, 0.42);
+        animation: modal-enter 180ms ease both;
     }
 
     .title-wrapper {
@@ -110,5 +112,23 @@
         padding: var(--lg-pad);
 
         cursor: pointer;
+        transition:
+            background-color 180ms ease,
+            color 180ms ease;
+    }
+
+    .close:hover {
+        background: #aa2aaa;
+    }
+
+    @keyframes modal-enter {
+        from {
+            opacity: 0;
+            transform: translateY(8px) scale(0.985);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
     }
 </style>

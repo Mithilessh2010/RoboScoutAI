@@ -58,6 +58,7 @@
         scrollbar-gutter: stable both-edges;
 
         scroll-padding-top: var(--lg-gap);
+        animation: page-enter 240ms ease both;
     }
 
     @media (max-width: 1500px) {
@@ -87,6 +88,9 @@
         position: fixed;
         overflow: hidden;
 
-        background: var(--bg-color);
+        background:
+            radial-gradient(circle at top left, rgba(228, 145, 201, 0.12), transparent 34rem),
+            linear-gradient(180deg, rgba(152, 37, 152, 0.08), transparent 18rem),
+            var(--bg-color);
     }
 </style>

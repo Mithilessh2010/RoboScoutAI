@@ -196,9 +196,13 @@
         align-items: center;
         padding: 0 var(--lg-pad);
 
-        background: var(--fg-color);
+        background: rgba(21, 23, 61, 0.82);
 
-        transition: width 0.3s ease 0s;
+        transition:
+            width 0.3s ease 0s,
+            background-color 180ms ease,
+            border-color 180ms ease,
+            box-shadow 180ms ease;
 
         border: 1px solid var(--sep-color);
         outline-offset: -1px;
@@ -208,13 +212,17 @@
     }
 
     form:focus-within {
-        background: var(--zebra-stripe-color);
+        background: rgba(31, 34, 71, 0.98);
+        border-color: var(--palette-pink);
+        box-shadow: 0 0 0 3px rgba(228, 145, 201, 0.14);
     }
 
     form:focus-within.has-text {
         border-bottom-left-radius: 0;
         border-bottom-right-radius: 0;
-        box-shadow: -2px 2px 10px 3px rgba(0, 0, 0, 10%);
+        box-shadow:
+            0 0 0 3px rgba(228, 145, 201, 0.14),
+            0 16px 34px rgba(5, 6, 20, 0.28);
     }
 
     input {
@@ -275,7 +283,7 @@
         transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
         transition-duration: 0.3s;
 
-        background: var(--fg-color);
+        background: rgba(31, 34, 71, 0.98);
 
         border: 1px solid var(--sep-color);
         border-top: none;
@@ -283,7 +291,7 @@
         border-bottom-right-radius: 4px;
         z-index: 1;
 
-        box-shadow: -2px 2px 10px 3px rgba(0, 0, 0, 10%);
+        box-shadow: 0 18px 42px rgba(5, 6, 20, 0.32);
 
         /* Hide border */
         clip-path: inset(1px 1px 1px 1px);
@@ -328,8 +336,8 @@
     }
 
     .shortcut {
-        color: gray;
-        outline: 1px solid gray;
+        color: var(--secondary-text-color);
+        outline: 1px solid rgba(228, 145, 201, 0.35);
         border-radius: 4px;
         padding: 1px var(--sm-pad);
     }

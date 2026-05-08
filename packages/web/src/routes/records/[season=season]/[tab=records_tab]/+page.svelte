@@ -99,7 +99,7 @@
 </script>
 
 <Head
-    title={`${season} ${$page.params.tab == "teams" ? "Team" : "Match"} Records | FTCScout`}
+    title={`${season} ${$page.params.tab == "teams" ? "Team" : "Match"} Records | RoboScoutAI`}
     description="Records and high scores for the {$page.params.season} season."
 />
 

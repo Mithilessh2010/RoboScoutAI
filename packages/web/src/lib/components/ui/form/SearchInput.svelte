@@ -26,6 +26,10 @@
         position: relative;
     }
 
+    div:focus-within :global(.glass) {
+        color: var(--palette-pink);
+    }
+
     div :global(.glass) {
         position: absolute;
         left: var(--md-gap);
@@ -49,10 +53,19 @@
         background: none;
         font-size: inherit;
         font-family: inherit;
+        color: var(--secondary-text-color);
 
         cursor: pointer;
 
         display: none;
+        transition:
+            color 180ms ease,
+            transform 140ms ease;
+    }
+
+    button:hover {
+        color: var(--palette-pink);
+        transform: scale(1.05);
     }
 
     input:focus:not(:placeholder-shown) + button,

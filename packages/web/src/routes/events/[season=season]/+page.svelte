@@ -122,7 +122,7 @@
 </script>
 
 <Head
-    title="Events | FTCScout"
+    title="Events | RoboScoutAI"
     description="Find and search for FTC events in the {$page.params.season} season."
 />
 
@@ -195,17 +195,19 @@
         align-items: center;
 
         font-size: var(--lg-font-size);
-        background: var(--hover-color);
+        background: rgba(152, 37, 152, 0.18);
 
         padding: var(--md-gap);
         margin-bottom: var(--md-gap);
         border-radius: 8px;
+        border: 1px solid rgba(228, 145, 201, 0.18);
     }
 
     .date-range {
         font-style: italic;
         font-weight: normal;
         font-size: var(--md-font-size);
+        color: var(--secondary-text-color);
     }
 
     ul {
