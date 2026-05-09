@@ -4,11 +4,12 @@
     "private": true,
     "scripts": {
         "dev": "vite dev",
-        "build": "vite build",
+        "build": "graphql-codegen --config ./codegen.prod.yml && vite build",
         "preview": "vite preview",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
         "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
         "gen": "graphql-codegen",
+        "gen:prod": "graphql-codegen --config ./codegen.prod.yml",
         "start": "node build/index.js"
     },
     "devDependencies": {
