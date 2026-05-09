@@ -18,7 +18,7 @@ export function getYouTubeVideoId(raw: string): string | null {
     }
 }
 
-export function getYouTubeEmbedUrl(raw: string, origin?: string): string | null {
+export function getYouTubeEmbedUrl(raw: string): string | null {
     const id = getYouTubeVideoId(raw);
     if (!id) return null;
     const u = new URL(`https://www.youtube.com/embed/${id}`);
@@ -26,7 +26,7 @@ export function getYouTubeEmbedUrl(raw: string, origin?: string): string | null 
     u.searchParams.set('modestbranding', '1');
     u.searchParams.set('playsinline', '1');
     u.searchParams.set('enablejsapi', '1');
-    if (origin) u.searchParams.set('origin', origin);
+    u.searchParams.set('fs', '1');
     return u.toString();
 }
 
@@ -53,8 +53,8 @@ export function getTwitchEmbedUrl(raw: string): string | null {
     return null;
 }
 
-export function getStreamEmbedUrl(raw: string, origin?: string): { provider: 'youtube' | 'twitch' | null; embedUrl: string | null } {
-    const yt = getYouTubeEmbedUrl(raw, origin);
+export function getStreamEmbedUrl(raw: string): { provider: 'youtube' | 'twitch' | null; embedUrl: string | null } {
+    const yt = getYouTubeEmbedUrl(raw);
     if (yt) return { provider: 'youtube', embedUrl: yt };
     const tw = getTwitchEmbedUrl(raw);
     if (tw) return { provider: 'twitch', embedUrl: tw };
