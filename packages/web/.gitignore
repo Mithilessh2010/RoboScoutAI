@@ -6,3 +6,4 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 /src/lib/graphql/generated/
+.vercel
