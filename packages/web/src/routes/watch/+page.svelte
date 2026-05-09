@@ -1,192 +1,170 @@
 <script lang="ts">
-    import { onMount } from "svelte";
-    import { deleteWatchRoom, listWatchRooms } from "$lib/watch-room/api";
-    import type { WatchRoomSummary } from "$lib/watch-room/api";
+    import { browser } from '$app/environment';
+    import { goto } from '$app/navigation';
+    import { getParticipantId, getDisplayName, createWatchRoom, patchWatchRoom } from '$lib/watch-room/api';
+    import { getStreamEmbedUrl } from '$lib/watch-room/streamUtils';
 
-    let rooms: WatchRoomSummary[] = [];
-    let loading = true;
-    let error = "";
+    let streams: Array<{ id: string; title: string; url: string; embedUrl: string | null; provider: string | null }> = [];
+    let showModal = false;
+    let url = '';
+    let title = '';
+    let error = '';
+    let focusId: string | null = null;
+    let creating = false;
 
-    async function refresh() {
-        loading = true;
-        error = "";
+    function openAdd() {
+        error = '';
+        url = '';
+        title = '';
+        showModal = true;
+    }
 
+    function addStream() {
+        error = '';
+        const trimmed = url.trim();
+        if (!trimmed) {
+            error = 'Paste a stream link first.';
+            return;
+        }
+        const { provider, embedUrl } = getStreamEmbedUrl(trimmed, browser ? location.origin : undefined);
+        if (!embedUrl) {
+            error = 'Unsupported stream link. Try a YouTube or Twitch link.';
+            return;
+        }
+        streams = [...streams, { id: crypto.randomUUID().slice(0, 8), title: title.trim() || 'Live stream', url: trimmed, embedUrl, provider }];
+        showModal = false;
+    }
+
+    function remove(id: string) {
+        streams = streams.filter((s) => s.id !== id);
+        if (focusId === id) focusId = null;
+    }
+
+    function toggleFocus(id: string) {
+        focusId = focusId === id ? null : id;
+    }
+
+    async function startParty() {
+        if (streams.length === 0) return;
+        creating = true;
         try {
-            rooms = await listWatchRooms();
+            const participantId = getParticipantId();
+            const displayName = getDisplayName() || 'Host';
+            const room = await createWatchRoom({ name: 'Watch Party', participantId, displayName, controlMode: 'HOST_ONLY' });
+            if (streams.length) {
+                const ts = new Date().toISOString();
+                const payload = streams.map((s, idx) => ({
+                    id: s.id,
+                    title: s.title,
+                    url: s.url,
+                    embedUrl: s.embedUrl,
+                    position: idx,
+                    isMain: idx === 0,
+                    createdAt: ts,
+                    updatedAt: ts,
+                }));
+                await patchWatchRoom(room.id, { streams: payload });
+            }
+            goto(`/watch/party/${room.id}`);
         } catch (err) {
-            error = err instanceof Error ? err.message : "Unable to load rooms.";
+            error = err instanceof Error ? err.message : 'Unable to create party.';
         } finally {
-            loading = false;
+            creating = false;
         }
     }
-
-    async function removeRoom(roomId: string) {
-        await deleteWatchRoom(roomId);
-        await refresh();
-    }
-
-    onMount(refresh);
 </script>
 
 <svelte:head>
-    <title>Watch Room | RoboScoutAI</title>
+    <title>Watch | RoboScoutAI</title>
 </svelte:head>
 
-<main>
-    <section class="hero">
-        <div>
-            <p>RoboScoutAI Watch Room</p>
-            <h1>Watch multiple FTC streams with your team.</h1>
+<main class="watch-page">
+    <header class="topbar">
+        <h1>Watch</h1>
+        <div class="actions">
+            <button on:click={openAdd}>Add Stream</button>
+            <button on:click={startParty} disabled={streams.length === 0 || creating}>{creating ? 'Starting...' : 'Start Party'}</button>
         </div>
-        <a class="primary" href="/watch/create">Create room</a>
-    </section>
+    </header>
 
-    <section class="panel">
-        <header>
-            <h2>Shared rooms</h2>
-            <span>Saved on the server</span>
-        </header>
-
-        {#if loading}
-            <p class="empty">Loading rooms...</p>
-        {:else if error}
-            <p class="empty">{error}</p>
-        {:else if rooms.length}
-            <div class="rooms">
-                {#each rooms as room (room.id)}
-                    <article>
-                        <div>
-                            <h3>{room.name}</h3>
-                            <p>
-                                {room.streams.length} stream{room.streams.length === 1 ? "" : "s"}
-                                {#if room.eventCode}
-                                    · {room.season} {room.eventCode}
-                                {/if}
-                                · {room.controlMode === "EVERYONE" ? "Everyone Can Control" : "Host Only"}
-                            </p>
+    {#if streams.length === 0}
+        <section class="empty">
+            <p>Add your first stream to get started.</p>
+            <button on:click={openAdd}>Add Stream</button>
+        </section>
+    {:else}
+        <section class={focusId ? 'focus-mode' : 'grid-mode'}>
+            {#if focusId}
+                {#each streams as s (s.id)}
+                    {#if s.id === focusId}
+                        <div class="focus">
+                            <iframe title={s.title} src={s.embedUrl} allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" allowfullscreen />
+                            <div class="meta">
+                                <strong>{s.title}</strong>
+                                <div class="meta-actions">
+                                    <button on:click={() => toggleFocus(s.id)}>Back to grid</button>
+                                    <button on:click={() => remove(s.id)}>Remove</button>
+                                </div>
+                            </div>
                         </div>
-                        <div class="actions">
-                            <a href={`/watch/room/${room.id}`}>Open</a>
-                            <button type="button" on:click={() => removeRoom(room.id)}>Remove</button>
-                        </div>
-                    </article>
+                    {/if}
                 {/each}
-            </div>
-        {:else}
-            <p class="empty">No shared rooms yet. Create one for your next event stream wall.</p>
-        {/if}
-    </section>
+            {:else}
+                <div class="grid">
+                    {#each streams as s (s.id)}
+                        <article class="stream-card">
+                            <iframe title={s.title} src={s.embedUrl} allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" allowfullscreen />
+                            <div class="meta">
+                                <strong>{s.title}</strong>
+                                <div class="meta-actions">
+                                    <button on:click={() => toggleFocus(s.id)}>Focus</button>
+                                    <button on:click={() => remove(s.id)}>Remove</button>
+                                </div>
+                            </div>
+                        </article>
+                    {/each}
+                </div>
+            {/if}
+        </section>
+    {/if}
+
+    {#if showModal}
+        <div class="modal" role="dialog" tabindex="-1" on:click={() => (showModal = false)} on:keydown={(e) => e.key === 'Escape' && (showModal = false)}>
+            <form class="modal-card" on:click|stopPropagation on:submit|preventDefault={addStream}>
+                <h3>Add Stream</h3>
+                {#if error}
+                    <p class="error">{error}</p>
+                {/if}
+                <label>
+                    <span>Stream URL</span>
+                    <input bind:value={url} placeholder="https://www.youtube.com/watch?v=..." />
+                </label>
+                <label>
+                    <span>Title (optional)</span>
+                    <input bind:value={title} placeholder="Optional title" />
+                </label>
+                <div class="row actions">
+                    <button type="submit">Add</button>
+                    <button type="button" on:click={() => (showModal = false)}>Cancel</button>
+                </div>
+            </form>
+        </div>
+    {/if}
 </main>
 
 <style>
-    main {
-        width: min(1180px, calc(100% - 2 * var(--lg-gap)));
-        margin: 0 auto;
-        display: grid;
-        gap: var(--vl-gap);
-    }
-
-    .hero,
-    .panel,
-    article {
-        border: 1px solid var(--sep-color);
-        border-radius: 8px;
-        background:
-            linear-gradient(180deg, rgba(241, 233, 233, 0.04), transparent),
-            rgba(31, 34, 71, 0.76);
-        box-shadow: 0 18px 48px rgba(5, 6, 20, 0.22);
-    }
-
-    .hero {
-        display: flex;
-        justify-content: space-between;
-        gap: var(--lg-gap);
-        align-items: center;
-        padding: var(--xl-gap);
-        animation: page-enter 220ms ease both;
-    }
-
-    .hero p,
-    header span,
-    article p,
-    .empty {
-        color: var(--secondary-text-color);
-    }
-
-    .hero p {
-        color: var(--palette-pink);
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-    }
-
-    .hero h1 {
-        max-width: 760px;
-        margin-top: var(--sm-gap);
-    }
-
-    .primary,
-    article a,
-    article button {
-        border: 1px solid rgba(228, 145, 201, 0.32);
-        border-radius: var(--pill-border-radius);
-        padding: 10px 16px;
-        color: var(--palette-off-white);
-        background: var(--palette-purple);
-        font: inherit;
-        font-weight: 800;
-        cursor: pointer;
-        transition:
-            background-color 180ms ease,
-            transform 140ms ease;
-    }
-
-    .primary:hover,
-    article a:hover,
-    article button:hover {
-        background: #aa2aaa;
-        text-decoration: none;
-        transform: translateY(-1px);
-    }
-
-    .panel {
-        padding: var(--lg-gap);
-    }
-
-    header,
-    article,
-    .actions {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: var(--md-gap);
-    }
-
-    .rooms {
-        display: grid;
-        gap: var(--md-gap);
-        margin-top: var(--lg-gap);
-    }
-
-    article {
-        padding: var(--lg-pad);
-    }
-
-    article button {
-        background: transparent;
-        color: var(--palette-pink);
-    }
-
-    .empty {
-        margin-top: var(--lg-gap);
-    }
-
-    @media (max-width: 700px) {
-        .hero,
-        header,
-        article {
-            align-items: stretch;
-            flex-direction: column;
-        }
-    }
+    .watch-page { max-width:1200px; margin:0 auto; padding:20px }
+    .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px }
+    .actions { display:flex; gap:12px }
+    button { border:1px solid rgba(152,37,152,0.32); background:var(--palette-purple); color:var(--palette-off-white); padding:8px 12px; border-radius:8px; cursor:pointer }
+    .empty { display:grid; place-items:center; gap:12px; padding:40px; border:1px dashed rgba(228,145,201,0.22); border-radius:8px }
+    .grid { display:grid; gap:12px; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)) }
+    .focus { display:block }
+    .stream-card { background:rgba(21,23,61,0.7); border-radius:8px; overflow:hidden; padding:8px }
+    iframe { width:100%; aspect-ratio:16/9; border:0 }
+    .meta { display:flex; justify-content:space-between; align-items:center; margin-top:8px }
+    .meta-actions { display:flex; gap:8px }
+    .modal { position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,0.45) }
+    .modal-card { background:var(--panel-bg, rgba(31,34,71,0.9)); padding:18px; border-radius:10px; width:min(640px,92%) }
+    .error { color:#ffb3c9 }
 </style>

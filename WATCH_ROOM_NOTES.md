@@ -175,22 +175,32 @@ Frontend can be deployed on Vercel if it connects to a stable backend origin tha
 
 Required frontend env:
 
-- PUBLIC_SERVER_ORIGIN
 
 The shared backend must provide:
 
-- /rest/v1/watch/* endpoints
-- /watch-room websocket route
 
 ## Known Limitations
 
-- Sync is best-effort, not frame-perfect.
-- Browser autoplay restrictions may require user interaction to fully sync playback.
-- No auth/authorization layer for invite links in MVP.
 
 ## Future Improvements
 
-- optional provider-backed realtime abstraction for multi-region scaling
-- better drift correction heuristics for long-running sessions
-- join/leave system messages in chat
+## Simplified Watch Flow (2026-05)
+
+- `/watch`: Simple watching page — paste streams and press "Start Party". No large form.
+- `/watch/party/[roomId]`: Party page loaded from server; includes streams, simple chat (polling), invite copy, and basic playback controls.
+
+Supported providers (initial): YouTube and Twitch channels/videos.
+
+Party creation:
+- Click `Start Party` on `/watch` — frontend calls `POST /rest/v1/watch/rooms` to create a room and PATCH to save streams.
+- Invite link: `/watch/party/[roomId]`.
+
+Chat & realtime:
+- Current implementation uses polling (server REST) to remain Vercel friendly; upgrade to a managed realtime provider recommended.
+
+Playback controls:
+- Host Only (default) or Everyone. Host Only restricts control to the creator; Everyone allows everyone.
+
+Notes:
+- This simplified flow is intentionally minimal: paste stream, watch, and invite. It avoids complex dashboards and large forms.
 - richer moderation controls and room permissions
