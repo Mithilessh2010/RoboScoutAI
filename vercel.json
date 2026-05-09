@@ -1,5 +1,5 @@
 {
     "buildCommand": "npm run web:build",
     "installCommand": "npm install",
-    "outputDirectory": ".vercel/output"
+    "outputDirectory": "packages/web/.vercel/output"
 }
