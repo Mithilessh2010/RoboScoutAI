@@ -5,6 +5,7 @@
         faHashtag,
         faHome,
         faTrophy,
+        faTv,
     } from "@fortawesome/free-solid-svg-icons";
     import SidebarItem from "./SidebarItem.svelte";
     import { sidebarOpen } from "./Sidebar.svelte";
@@ -23,6 +24,7 @@
 <SidebarItem icon={faCalendarAlt} name="Events" link="/events/{CURRENT_SEASON}" />
 <SidebarItem icon={faHashtag} name="Teams" link="/teams" />
 <SidebarItem icon={faTrophy} name="Season Records" link="/records/{CURRENT_SEASON}/teams" />
+<SidebarItem icon={faTv} name="Watch Room" link="/watch" />
 
 <style>
     b {

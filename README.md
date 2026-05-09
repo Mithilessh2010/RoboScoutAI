@@ -13,6 +13,7 @@ Live site: https://roboscoutai.vercel.app
 - GraphQL-powered historical scouting data
 - 3D and visual match/stat views where supported
 - Light and dark mode UI
+- Collaborative Watch Room for multi-stream event viewing
 - RoboScoutAI visual theme, logo, favicon, and Vercel deployment support
 
 ## Project Structure
@@ -40,6 +41,8 @@ npm install
 ## Environment Variables
 
 Do not commit real secrets. Local env files are intentionally ignored.
+
+Full env reference: [ENVIRONMENT_VARIABLES.md](./ENVIRONMENT_VARIABLES.md)
 
 ### Web
 
@@ -143,10 +146,24 @@ FTC_EVENTS_API_BASE_URL
 
 If the deployed site shows an internal error, first check that `PUBLIC_SERVER_ORIGIN` is not set to `localhost:4000` in Vercel.
 
+## Watch Room
+
+Watch Room lets teams create a shared stream wall for FTC events.
+
+- Create a room at `/watch/create`
+- Share the invite link from `/watch/room/[roomId]`
+- Add YouTube livestreams
+- Switch between 1, 2, and 4 stream layouts
+- Save timestamped room notes
+- Optionally attach the room to a season and event code for schedule context
+
+Watch Room uses browser `localStorage` for the MVP, so room edits and notes are local to each browser. Invite links can include the initial stream setup, but real-time shared editing is a future improvement.
+
+More details: [WATCH_ROOM_NOTES.md](./WATCH_ROOM_NOTES.md)
+
 ## Notes
 
 - `PUBLIC_*` variables are visible in the browser. Never put secrets in `PUBLIC_*` values.
 - FTC Events credentials should stay server-side.
 - The frontend deployment can use the production GraphQL origin while the local dev app can use `localhost:4000`.
 - Build warnings about large chunks may appear because some visualization/stat bundles are large; they do not necessarily mean deployment failed.
-
