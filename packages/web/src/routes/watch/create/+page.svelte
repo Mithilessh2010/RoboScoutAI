@@ -1,40 +1,82 @@
 <script lang="ts">
     import { goto } from "$app/navigation";
-    import { page } from "$app/stores";
-    import AddStreamForm from "$lib/components/watch-room/AddStreamForm.svelte";
-    import {
-        createRoom,
-        encodeRoomState,
-        normalizeEventCode,
-        saveRoom,
-    } from "$lib/watch-room/watchRoomStorage";
-    import type { WatchStream } from "$lib/watch-room/types";
+    import { browser } from "$app/environment";
     import { CURRENT_SEASON } from "@ftc-scout/common";
+    import { createWatchRoom, getDisplayName, getParticipantId, patchWatchRoom, setDisplayName } from "$lib/watch-room/api";
+    import { getYouTubeEmbedUrl, isSupportedStreamUrl } from "$lib/watch-room/youtubeEmbed";
+    import type { WatchControlMode, WatchStream } from "$lib/watch-room/types";
 
     let name = "Competition Watch Room";
     let season: number = CURRENT_SEASON;
     let eventCode = "";
+    let displayName = getDisplayName();
+    let continueAsGuest = displayName === "Guest";
+    let controlMode: WatchControlMode = "HOST_ONLY";
+    let streamTitle = "";
+    let streamUrl = "";
     let streams: WatchStream[] = [];
+    let error = "";
 
-    $: {
-        let querySeason = $page.url.searchParams.get("season");
-        let queryEventCode = $page.url.searchParams.get("eventCode");
-        if (querySeason && !Number.isNaN(+querySeason)) season = +querySeason;
-        if (queryEventCode && !eventCode) eventCode = normalizeEventCode(queryEventCode) || "";
-    }
+    function addStream() {
+        error = "";
+        if (!streamUrl.trim()) {
+            error = "Paste a YouTube stream URL first.";
+            return;
+        }
+        if (!isSupportedStreamUrl(streamUrl)) {
+            error = "Use a YouTube watch, youtu.be, live, shorts, or embed URL.";
+            return;
+        }
 
-    function addStream(event: CustomEvent<WatchStream>) {
-        streams = [...streams, event.detail];
+        let timestamp = new Date().toISOString();
+        streams = [
+            ...streams,
+            {
+                id: crypto.randomUUID().slice(0, 8),
+                title: streamTitle.trim() || "Event stream",
+                url: streamUrl.trim(),
+                embedUrl: getYouTubeEmbedUrl(streamUrl.trim(), browser ? location.origin : undefined),
+                position: streams.length,
+                isMain: streams.length === 0,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+            },
+        ];
+
+        streamTitle = "";
+        streamUrl = "";
     }
 
     function removeStream(id: string) {
-        streams = streams.filter((stream) => stream.id !== id);
+        streams = streams.filter((stream) => stream.id !== id).map((stream, index) => ({ ...stream, position: index }));
     }
 
     async function submit() {
-        let room = createRoom({ name, season, eventCode, streams });
-        room = saveRoom(room);
-        await goto(`/watch/room/${room.id}?state=${encodeRoomState(room)}`);
+        error = "";
+
+        try {
+            let participantDisplayName = continueAsGuest ? "Guest" : displayName.trim() || "Guest";
+
+            let room = await createWatchRoom({
+                name,
+                season,
+                eventCode: eventCode || null,
+                participantId: getParticipantId(),
+                displayName: participantDisplayName,
+                controlMode,
+            });
+
+            displayName = participantDisplayName;
+            setDisplayName?.(participantDisplayName);
+
+            if (streams.length) {
+                await patchWatchRoom(room.id, { streams });
+            }
+
+            await goto(`/watch/room/${room.id}`);
+        } catch (err) {
+            error = err instanceof Error ? err.message : "Unable to create room.";
+        }
     }
 </script>
 
@@ -54,6 +96,30 @@
                 <span>Room name</span>
                 <input bind:value={name} placeholder="Saturday qualifiers" />
             </label>
+            <label>
+                <span>Display name</span>
+                <input bind:value={displayName} placeholder="Guest" disabled={continueAsGuest} />
+            </label>
+            <button class="guest-toggle" type="button" on:click={() => (continueAsGuest = !continueAsGuest)}>
+                {continueAsGuest ? "Using guest mode" : "Continue as guest"}
+            </button>
+            <p class="guest-note">
+                {continueAsGuest
+                    ? "You can enter the room without choosing a display name."
+                    : "Turn on guest mode if you want to skip sign-in style setup and join anonymously."}
+            </p>
+
+            <fieldset class="control-mode">
+                <legend>Playback control mode</legend>
+                <label>
+                    <input type="radio" bind:group={controlMode} value="HOST_ONLY" />
+                    Host Only
+                </label>
+                <label>
+                    <input type="radio" bind:group={controlMode} value="EVERYONE" />
+                    Everyone Can Control
+                </label>
+            </fieldset>
             <div class="row">
                 <label>
                     <span>Season</span>
@@ -67,7 +133,12 @@
 
             <div class="streams">
                 <h2>Initial streams</h2>
-                <AddStreamForm on:add={addStream} />
+                <div class="add-row">
+                    <input bind:value={streamTitle} placeholder="Stream title" />
+                    <input bind:value={streamUrl} placeholder="https://www.youtube.com/watch?v=..." />
+                    <button type="button" on:click={addStream}>Add</button>
+                </div>
+
                 {#if streams.length}
                     <div class="stream-list">
                         {#each streams as stream (stream.id)}
@@ -79,6 +150,10 @@
                     </div>
                 {/if}
             </div>
+
+            {#if error}
+                <p class="error">{error}</p>
+            {/if}
 
             <button class="submit">Create room</button>
         </form>
@@ -121,13 +196,19 @@
         gap: var(--md-gap);
     }
 
-    .row {
+    .row,
+    .add-row {
         display: grid;
         grid-template-columns: 160px 1fr;
         gap: var(--md-gap);
     }
 
-    label span {
+    .add-row {
+        grid-template-columns: 200px 1fr auto;
+    }
+
+    label span,
+    .error {
         color: var(--secondary-text-color);
         font-size: var(--sm-font-size);
         font-weight: 800;
@@ -166,7 +247,8 @@
     }
 
     article button,
-    .submit {
+    .submit,
+    .add-row button {
         border: 1px solid rgba(228, 145, 201, 0.32);
         border-radius: var(--pill-border-radius);
         padding: 10px 16px;
@@ -186,7 +268,8 @@
     }
 
     article button:hover,
-    .submit:hover {
+    .submit:hover,
+    .add-row button:hover {
         background: #aa2aaa;
         color: var(--palette-off-white);
         transform: translateY(-1px);
@@ -197,9 +280,64 @@
         min-height: 44px;
     }
 
+    .error {
+        margin-top: var(--sm-gap);
+    }
+
+    .guest-toggle {
+        width: fit-content;
+        border: 1px solid rgba(228, 145, 201, 0.32);
+        border-radius: var(--pill-border-radius);
+        padding: 8px 14px;
+        color: var(--palette-off-white);
+        background: rgba(126, 38, 153, 0.6);
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+        transition:
+            background-color 180ms ease,
+            transform 140ms ease;
+    }
+
+    .guest-toggle:hover {
+        background: #aa2aaa;
+        transform: translateY(-1px);
+    }
+
+    .guest-note {
+        margin-top: -0.35rem;
+        color: var(--secondary-text-color);
+        font-size: var(--sm-font-size);
+    }
+
+    .control-mode {
+        display: grid;
+        gap: var(--sm-gap);
+        border: 1px solid var(--sep-color);
+        border-radius: 8px;
+        padding: var(--md-pad);
+        background: rgba(21, 23, 61, 0.45);
+    }
+
+    .control-mode legend {
+        color: var(--secondary-text-color);
+        font-size: var(--sm-font-size);
+        font-weight: 800;
+        padding: 0 4px;
+    }
+
+    .control-mode label {
+        display: flex;
+        align-items: center;
+        gap: var(--sm-gap);
+    }
+
     @media (max-width: 650px) {
-        .row {
+        .row,
+        .add-row,
+        article {
             grid-template-columns: 1fr;
+            display: grid;
         }
     }
 </style>

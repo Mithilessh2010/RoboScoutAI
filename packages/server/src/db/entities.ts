@@ -12,6 +12,8 @@ import { TeamEventParticipationSchemas } from "./entities/dyn/team-event-partici
 import { ApiReq } from "./entities/ApiReq";
 import { Analytics } from "./entities/Analytics";
 import { BestName } from "./entities/BestName";
+import { WatchRoom } from "./entities/WatchRoom";
+import { WatchRoomMessage } from "./entities/WatchRoomMessage";
 
 export const DEV_ENTITIES: MixedList<string | Function | EntitySchema<any>> = [FtcApiReq];
 
@@ -27,5 +29,7 @@ export const ENTITIES: MixedList<string | Function | EntitySchema<any>> = [
     BestName,
     ApiReq,
     Analytics,
+    WatchRoom,
+    WatchRoomMessage,
     ...(IS_DEV ? DEV_ENTITIES : []),
 ];

@@ -1,8 +1,7 @@
 import type { PageLoad } from "./$types";
 
-export const load: PageLoad = ({ params, url }) => {
+export const load: PageLoad = ({ params }) => {
     return {
         roomId: params.roomId,
-        inviteState: url.searchParams.get("state"),
     };
 };

@@ -62,18 +62,4 @@ export type CreateWatchRoomInput = {
     controlMode?: WatchControlMode;
 };
 
-export type WatchLayout = "single" | "two" | "four";
-
-export type WatchNote = {
-    id: string;
-    text: string;
-    createdAt: string;
-    streamId?: string;
-};
-
-export type WatchRoomDraft = {
-    name: string;
-    season?: number;
-    eventCode?: string;
-    streams: WatchStream[];
-};
+export type WatchRoomSummary = WatchRoom;

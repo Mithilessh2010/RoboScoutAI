@@ -1,96 +1,196 @@
 # Watch Room Notes
 
-## What Was Added
+## Overview
 
-RoboScoutAI Watch Room adds a competition-focused stream wall for FTC teams.
+Watch Room is a real shared livestream room built on the RoboScoutAI backend.
 
-Routes:
+Supported routes:
 
-- `/watch`
-- `/watch/create`
-- `/watch/room/[roomId]`
-- `/events/[season]/[code]/watch`
+- /watch
+- /watch/create
+- /watch/room/[roomId]
 
-Components:
+Core capabilities:
 
-- `LayoutSelector.svelte`
-- `StreamGrid.svelte`
-- `StreamCard.svelte`
-- `AddStreamForm.svelte`
-- `InvitePanel.svelte`
-- `RoomNotesPanel.svelte`
-- `EventSchedulePanel.svelte`
+- shared room creation
+- invite links
+- multi-stream YouTube wall
+- room chat
+- synced playback controls
+- control mode: Host Only or Everyone Can Control
 
-Utilities:
+Not included:
 
-- `youtubeEmbed.ts`
-- `watchRoomStorage.ts`
-- `roomId.ts`
-- `types.ts`
+- voice call
+- video call
+- camera or mic controls
+- WebRTC call system
+- Jitsi or any external call embed
 
-## How Rooms Work
+## Room Creation
 
-Rooms are created in the browser. A room includes:
+Users create rooms from /watch/create.
+
+Fields:
 
 - room name
 - optional season
 - optional event code
-- selected stream layout
-- stream list
-- notes
+- playback control mode: HOST_ONLY or EVERYONE
+- optional initial YouTube stream(s)
 
-## Persistence
-
-Watch Room uses `localStorage` for the MVP. This avoids database migrations and keeps the existing FTCScout/RoboScoutAI data functionality untouched.
-
-LocalStorage means:
-
-- rooms are saved on the device that created/opened them
-- notes are local to that browser
-- invite links can carry initial room state
-- changes after sharing are not real-time synced
+After creation, the app redirects to /watch/room/[roomId].
 
 ## Invite Links
 
-Invite links use `/watch/room/[roomId]`.
+Each room has a shareable URL:
 
-When possible, the link includes encoded initial room state in a `state` query parameter. This lets another browser open the same starting stream set without needing backend persistence.
+- /watch/room/[roomId]
 
-## Supported Stream URL Formats
+The room page includes:
 
-The MVP supports YouTube URLs:
+- room ID display
+- invite link display
+- copy invite link button
 
-- `https://www.youtube.com/watch?v=VIDEO_ID`
-- `https://youtu.be/VIDEO_ID`
-- `https://www.youtube.com/embed/VIDEO_ID`
-- `https://www.youtube.com/live/VIDEO_ID`
+Anyone with the link can join for MVP.
 
-Unsupported links show helpful error text instead of breaking the room.
+## Display Names
 
-## Event Schedule
+Users can set a display name from the room screen.
 
-If a room has a season and event code, the schedule panel attempts to load:
+If no saved display name exists, the room prompts for one on entry with an option to continue as Guest.
 
-```text
-/api/ftc/schedule?season=SEASON&eventCode=EVENT_CODE
-```
+## Control Modes
 
-If the schedule request fails, streams and notes still work.
+Watch Room supports two persisted control modes:
+
+- HOST_ONLY
+- EVERYONE
+
+### HOST_ONLY
+
+- Only host can control shared playback (play/pause/seek/active stream).
+- Viewers can watch and chat.
+- Viewers can use Follow Host and Sync to room for alignment.
+
+### EVERYONE
+
+- Any participant can control shared playback.
+- Last controller is tracked in playback state.
+
+## Stream Layout Behavior
+
+Layout auto-adjusts by stream count:
+
+- 1 stream: single full-width view
+- 2 streams: split view
+- 3 streams: 3-up grid
+- 4 streams: 2x2 grid
+- >4 streams: responsive scrolling grid
+
+Room controls include:
+
+- add stream
+- remove stream
+- edit title
+- set main stream
+- focus stream
+- return to grid
+
+## YouTube URL Support
+
+Supported input forms:
+
+- https://www.youtube.com/watch?v=VIDEO_ID
+- https://youtu.be/VIDEO_ID
+- https://www.youtube.com/embed/VIDEO_ID
+- https://www.youtube.com/live/VIDEO_ID
+- https://www.youtube.com/shorts/VIDEO_ID
+
+The helper normalizes to embed URLs. Unsupported links show a clear validation error and do not break room state.
+
+## Chat
+
+Chat is room-shared and persisted.
+
+- users send messages with display name
+- timestamps shown per message
+- room history is loaded on join
+- realtime updates are broadcast through backend websocket
+
+## Playback Sync
+
+Playback sync is implemented as best-effort shared sync.
+
+Available controls:
+
+- Play for room
+- Pause for room
+- Sync to room
+- Follow host toggle (HOST_ONLY mode)
+
+Synced state includes:
+
+- active stream ID
+- playing/paused state
+- current timestamp
+- last controller participant ID
+- updated timestamp
+
+The room uses YouTube IFrame Player API where available. Exact frame-level sync is not guaranteed due to browser autoplay policy, network jitter, and player buffering.
+
+## Realtime Events
+
+Current room websocket supports events such as:
+
+- room:join
+- room:leave
+- participant:update
+- stream:add
+- stream:update
+- stream:remove
+- stream:main
+- layout:update
+- playback:play
+- playback:pause
+- playback:seek
+- playback:sync
+- chat:message
+
+## Persistence
+
+Room state is persisted in backend database and includes:
+
+- room metadata
+- control mode
+- streams
+- playback state
+- participants
+- chat messages
+
+## Vercel Deployment Notes
+
+Frontend can be deployed on Vercel if it connects to a stable backend origin that hosts REST + websocket routes.
+
+Required frontend env:
+
+- PUBLIC_SERVER_ORIGIN
+
+The shared backend must provide:
+
+- /rest/v1/watch/* endpoints
+- /watch-room websocket route
 
 ## Known Limitations
 
-- No auth requirement for MVP.
-- No real-time collaboration yet.
-- Room edits are not synced across users after the invite is opened.
-- Notes are stored per browser.
-- QR codes are not included yet.
+- Sync is best-effort, not frame-perfect.
+- Browser autoplay restrictions may require user interaction to fully sync playback.
+- No auth/authorization layer for invite links in MVP.
 
 ## Future Improvements
 
-- Backend room persistence.
-- Shared notes.
-- Viewer presence.
-- WebSocket or realtime room state sync.
-- Match-linked notes.
-- Team-linked notes.
-- QR invite code.
+- optional provider-backed realtime abstraction for multi-region scaling
+- better drift correction heuristics for long-running sessions
+- join/leave system messages in chat
+- richer moderation controls and room permissions

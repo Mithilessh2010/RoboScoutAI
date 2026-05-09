@@ -15,6 +15,7 @@ import { fetchPriorSeasons, watchApi } from "./ftc-api/watch";
 import { setupBannerRoutes } from "./banner";
 import { handleAnalytics } from "./analytics";
 import { setupRest } from "./rest/setupRest";
+import { setupWatchRoomRealtime } from "./watch-room/realtime";
 import { createServer } from "http";
 import { WebSocketServer } from "ws";
 import { useServer } from "graphql-ws/lib/use/ws";
@@ -41,10 +42,8 @@ async function main() {
     );
 
     let httpServer = createServer(app);
-    let wsServer = new WebSocketServer({
-        server: httpServer,
-        path: "/graphql",
-    });
+    let wsServer = new WebSocketServer({ noServer: true });
+    let watchRoomWsServer = setupWatchRoomRealtime();
 
     const serverCleanup = useServer({ schema: GQL_SCHEMA }, wsServer);
 
@@ -96,6 +95,26 @@ async function main() {
     setupSiteMap(app);
 
     setupBannerRoutes(app);
+
+    httpServer.on("upgrade", (request, socket, head) => {
+        let pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+
+        if (pathname === "/graphql") {
+            wsServer.handleUpgrade(request, socket, head, (ws) => {
+                wsServer.emit("connection", ws, request);
+            });
+            return;
+        }
+
+        if (pathname === "/watch-room") {
+            watchRoomWsServer.handleUpgrade(request, socket, head, (ws) => {
+                watchRoomWsServer.emit("connection", ws, request);
+            });
+            return;
+        }
+
+        socket.destroy();
+    });
 
     httpServer.listen(SERVER_PORT, "0.0.0.0", () => {
         console.info(`Server started and listening on port ${SERVER_PORT}.`);

@@ -22,6 +22,17 @@ import { frontendMSFromDB } from "../graphql/dyn/match-score";
 import { FindOptionsWhere, In } from "typeorm";
 import { getQuickStats } from "../graphql/resolvers/Team";
 import { addTypename } from "../graphql/dyn/tep";
+import {
+    addWatchRoomMessage,
+    createWatchRoom,
+    deleteWatchRoom,
+    getWatchRoom,
+    listWatchRoomMessages,
+    listWatchRooms,
+    mutateWatchRoom,
+    upsertRoomParticipant,
+} from "../watch-room/store";
+import type { CreateWatchRoomInput, WatchControlMode, WatchRoom } from "../watch-room/types";
 
 const pre = "/rest/v1/";
 
@@ -59,6 +70,116 @@ export function setupRest(app: Express) {
     app.get(pre + "events/:season(\\d+)/:code/teams", eventTeams);
     app.get(pre + "events/:season(\\d+)/:code/preview", eventPreview);
     app.get(pre + "events/search/:season(\\d+)", eventSearch);
+
+    app.get(pre + "watch/rooms", watchRoomList);
+    app.post(pre + "watch/rooms", watchRoomCreate);
+    app.get(pre + "watch/rooms/:roomId", watchRoomGet);
+    app.patch(pre + "watch/rooms/:roomId", watchRoomPatch);
+    app.delete(pre + "watch/rooms/:roomId", watchRoomDelete);
+    app.get(pre + "watch/rooms/:roomId/messages", watchRoomMessages);
+    app.post(pre + "watch/rooms/:roomId/messages", watchRoomMessageCreate);
+}
+
+async function watchRoomList(_req: Request, res: Response) {
+    res.send(await listWatchRooms());
+}
+
+async function watchRoomCreate(req: Request<unknown, unknown, Partial<CreateWatchRoomInput>>, res: Response) {
+    if (!req.body?.participantId) {
+        res.status(400).send({ error: "participantId is required" });
+        return;
+    }
+
+    let controlMode: WatchControlMode = req.body.controlMode === "EVERYONE" ? "EVERYONE" : "HOST_ONLY";
+
+    let room = await createWatchRoom({
+        name: req.body.name || "RoboScoutAI Watch Room",
+        season: req.body.season ?? null,
+        eventCode: req.body.eventCode ?? null,
+        participantId: req.body.participantId,
+        displayName: req.body.displayName || "Host",
+        controlMode,
+    });
+
+    res.status(201).send(room);
+}
+
+async function watchRoomGet(req: Request<{ roomId: string }>, res: Response) {
+    let room = await getWatchRoom(req.params.roomId);
+    if (!room) {
+        res.status(404).send({ error: "Room not found" });
+        return;
+    }
+
+    res.send(room);
+}
+
+async function watchRoomPatch(req: Request<{ roomId: string }, unknown, Partial<WatchRoom> & { participantId?: string }>, res: Response) {
+    let room = await mutateWatchRoom(req.params.roomId, (current) => {
+        let next: WatchRoom = {
+            ...current,
+            name: req.body.name?.trim() || current.name,
+            season: req.body.season ?? current.season,
+            eventCode: req.body.eventCode !== undefined ? req.body.eventCode?.trim().toUpperCase() || null : current.eventCode,
+            hostParticipantId: req.body.hostParticipantId ?? current.hostParticipantId,
+            controlMode: req.body.controlMode === "EVERYONE" ? "EVERYONE" : req.body.controlMode === "HOST_ONLY" ? "HOST_ONLY" : current.controlMode,
+            layoutPreference: req.body.layoutPreference || current.layoutPreference,
+            focusStreamId: req.body.focusStreamId ?? current.focusStreamId,
+            streams: req.body.streams ? req.body.streams.map((stream, index) => ({
+                ...stream,
+                position: Number.isFinite(stream.position) ? stream.position : index,
+                embedUrl: stream.embedUrl ?? null,
+            })) : current.streams,
+            playbackState: req.body.playbackState ? { ...current.playbackState, ...req.body.playbackState } : current.playbackState,
+            participants: req.body.participants || current.participants,
+            createdAt: current.createdAt,
+            updatedAt: current.updatedAt,
+        };
+
+        if (req.body.participantId) {
+            next = upsertRoomParticipant(next, req.body.participantId, req.body.participantId);
+        }
+
+        return next;
+    });
+
+    if (!room) {
+        res.status(404).send({ error: "Room not found" });
+        return;
+    }
+
+    res.send(room);
+}
+
+async function watchRoomDelete(req: Request<{ roomId: string }>, res: Response) {
+    await deleteWatchRoom(req.params.roomId);
+    res.status(204).end();
+}
+
+async function watchRoomMessages(req: Request<{ roomId: string }>, res: Response) {
+    let room = await getWatchRoom(req.params.roomId);
+    if (!room) {
+        res.status(404).send({ error: "Room not found" });
+        return;
+    }
+
+    res.send(await listWatchRoomMessages(req.params.roomId));
+}
+
+async function watchRoomMessageCreate(req: Request<{ roomId: string }, unknown, { participantId?: string; senderName?: string; message?: string }>, res: Response) {
+    let room = await getWatchRoom(req.params.roomId);
+    if (!room) {
+        res.status(404).send({ error: "Room not found" });
+        return;
+    }
+
+    if (!req.body.participantId || !req.body.message) {
+        res.status(400).send({ error: "participantId and message are required" });
+        return;
+    }
+
+    let message = await addWatchRoomMessage(req.params.roomId, req.body.participantId, req.body.senderName || "Guest", req.body.message);
+    res.status(201).send(message);
 }
 
 async function teamByNumber(req: Request<{ number: string }>, res: Response) {

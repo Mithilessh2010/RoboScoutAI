@@ -14,6 +14,8 @@ const team_event_participation_1 = require("./entities/dyn/team-event-participat
 const ApiReq_1 = require("./entities/ApiReq");
 const Analytics_1 = require("./entities/Analytics");
 const BestName_1 = require("./entities/BestName");
+const WatchRoom_1 = require("./entities/WatchRoom");
+const WatchRoomMessage_1 = require("./entities/WatchRoomMessage");
 exports.DEV_ENTITIES = [FtcApiReq_1.FtcApiReq];
 exports.ENTITIES = [
     DataHasBeenLoaded_1.DataHasBeenLoaded,
@@ -27,6 +29,8 @@ exports.ENTITIES = [
     BestName_1.BestName,
     ApiReq_1.ApiReq,
     Analytics_1.Analytics,
+    WatchRoom_1.WatchRoom,
+    WatchRoomMessage_1.WatchRoomMessage,
     ...(constants_1.IS_DEV ? exports.DEV_ENTITIES : []),
 ];
 //# sourceMappingURL=entities.js.map

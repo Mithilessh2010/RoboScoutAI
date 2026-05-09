@@ -1,18 +1,31 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { listRooms, deleteRoom } from "$lib/watch-room/watchRoomStorage";
-    import type { WatchRoom } from "$lib/watch-room/types";
+    import { deleteWatchRoom, listWatchRooms } from "$lib/watch-room/api";
+    import type { WatchRoomSummary } from "$lib/watch-room/api";
 
-    let rooms: WatchRoom[] = [];
+    let rooms: WatchRoomSummary[] = [];
+    let loading = true;
+    let error = "";
 
-    onMount(() => {
-        rooms = listRooms();
-    });
+    async function refresh() {
+        loading = true;
+        error = "";
 
-    function removeRoom(roomId: string) {
-        deleteRoom(roomId);
-        rooms = listRooms();
+        try {
+            rooms = await listWatchRooms();
+        } catch (err) {
+            error = err instanceof Error ? err.message : "Unable to load rooms.";
+        } finally {
+            loading = false;
+        }
     }
+
+    async function removeRoom(roomId: string) {
+        await deleteWatchRoom(roomId);
+        await refresh();
+    }
+
+    onMount(refresh);
 </script>
 
 <svelte:head>
@@ -30,11 +43,15 @@
 
     <section class="panel">
         <header>
-            <h2>Saved rooms</h2>
-            <span>Stored on this device</span>
+            <h2>Shared rooms</h2>
+            <span>Saved on the server</span>
         </header>
 
-        {#if rooms.length}
+        {#if loading}
+            <p class="empty">Loading rooms...</p>
+        {:else if error}
+            <p class="empty">{error}</p>
+        {:else if rooms.length}
             <div class="rooms">
                 {#each rooms as room (room.id)}
                     <article>
@@ -45,17 +62,18 @@
                                 {#if room.eventCode}
                                     · {room.season} {room.eventCode}
                                 {/if}
+                                · {room.controlMode === "EVERYONE" ? "Everyone Can Control" : "Host Only"}
                             </p>
                         </div>
                         <div class="actions">
                             <a href={`/watch/room/${room.id}`}>Open</a>
-                            <button on:click={() => removeRoom(room.id)}>Remove</button>
+                            <button type="button" on:click={() => removeRoom(room.id)}>Remove</button>
                         </div>
                     </article>
                 {/each}
             </div>
         {:else}
-            <p class="empty">No rooms saved yet. Create one for your next event stream wall.</p>
+            <p class="empty">No shared rooms yet. Create one for your next event stream wall.</p>
         {/if}
     </section>
 </main>
@@ -132,7 +150,7 @@
     }
 
     .panel {
-        padding: var(--lg-pad);
+        padding: var(--lg-gap);
     }
 
     header,

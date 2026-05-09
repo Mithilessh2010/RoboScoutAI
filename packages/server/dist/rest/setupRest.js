@@ -23,6 +23,7 @@ const match_score_1 = require("../graphql/dyn/match-score");
 const typeorm_1 = require("typeorm");
 const Team_2 = require("../graphql/resolvers/Team");
 const tep_1 = require("../graphql/dyn/tep");
+const store_1 = require("../watch-room/store");
 const pre = "/rest/v1/";
 function isSeason(season) {
     return common_1.ALL_SEASONS.indexOf(season) != -1;
@@ -52,8 +53,100 @@ function setupRest(app) {
     app.get(pre + "events/:season(\\d+)/:code/teams", eventTeams);
     app.get(pre + "events/:season(\\d+)/:code/preview", eventPreview);
     app.get(pre + "events/search/:season(\\d+)", eventSearch);
+    app.get(pre + "watch/rooms", watchRoomList);
+    app.post(pre + "watch/rooms", watchRoomCreate);
+    app.get(pre + "watch/rooms/:roomId", watchRoomGet);
+    app.patch(pre + "watch/rooms/:roomId", watchRoomPatch);
+    app.delete(pre + "watch/rooms/:roomId", watchRoomDelete);
+    app.get(pre + "watch/rooms/:roomId/messages", watchRoomMessages);
+    app.post(pre + "watch/rooms/:roomId/messages", watchRoomMessageCreate);
 }
 exports.setupRest = setupRest;
+function watchRoomList(_req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        res.send(yield (0, store_1.listWatchRooms)());
+    });
+}
+function watchRoomCreate(req, res) {
+    var _a, _b, _c;
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!((_a = req.body) === null || _a === void 0 ? void 0 : _a.participantId)) {
+            res.status(400).send({ error: "participantId is required" });
+            return;
+        }
+        let controlMode = req.body.controlMode === "EVERYONE" ? "EVERYONE" : "HOST_ONLY";
+        let room = yield (0, store_1.createWatchRoom)({
+            name: req.body.name || "RoboScoutAI Watch Room",
+            season: (_b = req.body.season) !== null && _b !== void 0 ? _b : null,
+            eventCode: (_c = req.body.eventCode) !== null && _c !== void 0 ? _c : null,
+            participantId: req.body.participantId,
+            displayName: req.body.displayName || "Host",
+            controlMode,
+        });
+        res.status(201).send(room);
+    });
+}
+function watchRoomGet(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let room = yield (0, store_1.getWatchRoom)(req.params.roomId);
+        if (!room) {
+            res.status(404).send({ error: "Room not found" });
+            return;
+        }
+        res.send(room);
+    });
+}
+function watchRoomPatch(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let room = yield (0, store_1.mutateWatchRoom)(req.params.roomId, (current) => {
+            var _a, _b, _c, _d, _e;
+            let next = Object.assign(Object.assign({}, current), { name: ((_a = req.body.name) === null || _a === void 0 ? void 0 : _a.trim()) || current.name, season: (_b = req.body.season) !== null && _b !== void 0 ? _b : current.season, eventCode: req.body.eventCode !== undefined ? ((_c = req.body.eventCode) === null || _c === void 0 ? void 0 : _c.trim().toUpperCase()) || null : current.eventCode, hostParticipantId: (_d = req.body.hostParticipantId) !== null && _d !== void 0 ? _d : current.hostParticipantId, controlMode: req.body.controlMode === "EVERYONE" ? "EVERYONE" : req.body.controlMode === "HOST_ONLY" ? "HOST_ONLY" : current.controlMode, layoutPreference: req.body.layoutPreference || current.layoutPreference, focusStreamId: (_e = req.body.focusStreamId) !== null && _e !== void 0 ? _e : current.focusStreamId, streams: req.body.streams ? req.body.streams.map((stream, index) => {
+                    var _a;
+                    return (Object.assign(Object.assign({}, stream), { position: Number.isFinite(stream.position) ? stream.position : index, embedUrl: (_a = stream.embedUrl) !== null && _a !== void 0 ? _a : null }));
+                }) : current.streams, playbackState: req.body.playbackState ? Object.assign(Object.assign({}, current.playbackState), req.body.playbackState) : current.playbackState, participants: req.body.participants || current.participants, createdAt: current.createdAt, updatedAt: current.updatedAt });
+            if (req.body.participantId) {
+                next = (0, store_1.upsertRoomParticipant)(next, req.body.participantId, req.body.participantId);
+            }
+            return next;
+        });
+        if (!room) {
+            res.status(404).send({ error: "Room not found" });
+            return;
+        }
+        res.send(room);
+    });
+}
+function watchRoomDelete(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        yield (0, store_1.deleteWatchRoom)(req.params.roomId);
+        res.status(204).end();
+    });
+}
+function watchRoomMessages(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let room = yield (0, store_1.getWatchRoom)(req.params.roomId);
+        if (!room) {
+            res.status(404).send({ error: "Room not found" });
+            return;
+        }
+        res.send(yield (0, store_1.listWatchRoomMessages)(req.params.roomId));
+    });
+}
+function watchRoomMessageCreate(req, res) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let room = yield (0, store_1.getWatchRoom)(req.params.roomId);
+        if (!room) {
+            res.status(404).send({ error: "Room not found" });
+            return;
+        }
+        if (!req.body.participantId || !req.body.message) {
+            res.status(400).send({ error: "participantId and message are required" });
+            return;
+        }
+        let message = yield (0, store_1.addWatchRoomMessage)(req.params.roomId, req.body.participantId, req.body.senderName || "Guest", req.body.message);
+        res.status(201).send(message);
+    });
+}
 function teamByNumber(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         let number = +req.params.number;

@@ -52,6 +52,7 @@ const watch_1 = require("./ftc-api/watch");
 const banner_1 = require("./banner");
 const analytics_1 = require("./analytics");
 const setupRest_1 = require("./rest/setupRest");
+const realtime_1 = require("./watch-room/realtime");
 const http_1 = require("http");
 const ws_1 = require("ws");
 const ws_2 = require("graphql-ws/lib/use/ws");
@@ -69,10 +70,8 @@ function main() {
             credentials: false,
         }), (0, compression_1.default)(), express_1.default.json());
         let httpServer = (0, http_1.createServer)(app);
-        let wsServer = new ws_1.WebSocketServer({
-            server: httpServer,
-            path: "/graphql",
-        });
+        let wsServer = new ws_1.WebSocketServer({ noServer: true });
+        let watchRoomWsServer = (0, realtime_1.setupWatchRoomRealtime)();
         const serverCleanup = (0, ws_2.useServer)({ schema: schema_1.GQL_SCHEMA }, wsServer);
         const serverCache = new utils_keyvaluecache_1.InMemoryLRUCache({
             maxSize: Math.pow(2, 20) * 100,
@@ -117,6 +116,23 @@ function main() {
         (0, setupRest_1.setupRest)(app);
         (0, setupSitemap_1.setupSiteMap)(app);
         (0, banner_1.setupBannerRoutes)(app);
+        httpServer.on("upgrade", (request, socket, head) => {
+            var _a;
+            let pathname = new URL((_a = request.url) !== null && _a !== void 0 ? _a : "/", "http://localhost").pathname;
+            if (pathname === "/graphql") {
+                wsServer.handleUpgrade(request, socket, head, (ws) => {
+                    wsServer.emit("connection", ws, request);
+                });
+                return;
+            }
+            if (pathname === "/watch-room") {
+                watchRoomWsServer.handleUpgrade(request, socket, head, (ws) => {
+                    watchRoomWsServer.emit("connection", ws, request);
+                });
+                return;
+            }
+            socket.destroy();
+        });
         httpServer.listen(constants_1.SERVER_PORT, "0.0.0.0", () => {
             console.info(`Server started and listening on port ${constants_1.SERVER_PORT}.`);
         });
