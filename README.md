@@ -1,21 +1,152 @@
-# FTCScout
+# RoboScoutAI
 
-FTCScout is a FIRST Tech Challenge (FTC) statistics website designed to provide the most detailed level of statistics analysis possible. It was inspired by [The Orange Alliance](https://theorangealliance.org/), [FTCScores](https://ftcscores.com/), [FTC Stats](http://www.ftcstats.org/), and [FTC Events](https://ftc-events.firstinspires.org/).
+RoboScoutAI is a modern FTC scouting, statistics, and strategy platform built for teams that need fast access to competition data. It combines team search, event discovery, rankings, match data, OPR-style stats, and detailed event/team views in a polished robotics-focused interface.
 
-It includes advanced visualizations, including 3D field maps.
+Live site: https://roboscoutai.vercel.app
 
-![3D graphic of playing field](readmefiles/image1.png)
+## Highlights
 
-In addition, it provides detailed statistics and advanced filtering options
+- Team search and team detail pages
+- Event search, event detail pages, rankings, matches, awards, and insights
+- Compact scouting/statistics tables designed for competition use
+- FTC Events API proxy routes for live official data
+- GraphQL-powered historical scouting data
+- 3D and visual match/stat views where supported
+- Light and dark mode UI
+- RoboScoutAI visual theme, logo, favicon, and Vercel deployment support
 
-![Event Rankings Page](readmefiles/image2.png)
+## Project Structure
 
-![Event Rankings Filtering Menu](readmefiles/image3.png)
+```text
+packages/
+  common/   Shared FTC constants, types, and utilities
+  server/   GraphQL/API server and database-backed scouting data
+  web/      SvelteKit frontend deployed to Vercel
+```
 
-FTCScout also provides a comprehensive API for fetching information. You have the choice between using [GraphQL](https://api.ftcscout.org/graphql) or the [Rest API](https://ftcscout.org/api/rest) to query information.
+## Requirements
 
-![Alt text](readmefiles/image4.png)
+- Node.js 24 for the Vercel web deployment path
+- npm
+- PostgreSQL if running the local backend database
+- FTC Events API credentials for live official FTC data
 
-## Development information
+## Install
 
-[Development information can be found here](./instructions/instructions.md).
+```bash
+npm install
+```
+
+## Environment Variables
+
+Do not commit real secrets. Local env files are intentionally ignored.
+
+### Web
+
+Create or update `packages/web/.env.local`:
+
+```env
+PUBLIC_SERVER_ORIGIN="localhost:4000"
+PUBLIC_FRONTEND_CODE="local-dev-frontend-code"
+FTC_EVENTS_USERNAME="your_ftc_events_username"
+FTC_EVENTS_AUTH_KEY="your_ftc_events_authorization_key"
+FTC_EVENTS_API_BASE_URL="https://ftc-api.firstinspires.org/v2.0"
+```
+
+For Vercel production, `PUBLIC_SERVER_ORIGIN` should not be `localhost:4000`. Use the production GraphQL origin:
+
+```env
+PUBLIC_SERVER_ORIGIN="api.ftcscout.org"
+```
+
+### Server
+
+Create or update `packages/server/.env`:
+
+```env
+FTC_API_KEY="base64_username_colon_authorization_key"
+DATABASE_URL="postgres://user:password@localhost:5432/database"
+PORT=4000
+FRONTEND_CODE="local-dev-frontend-code"
+LOGGING=0
+SYNC_DB=1
+SYNC_API=1
+CACHE_REQ=1
+DB_TIMEOUT=5000
+```
+
+`FRONTEND_CODE` should match `PUBLIC_FRONTEND_CODE`.
+
+## Local Development
+
+Run these from the repo root.
+
+Build shared code:
+
+```bash
+npm run common:build
+```
+
+Start the backend:
+
+```bash
+npm run server:dev
+```
+
+Start the frontend:
+
+```bash
+npm run web:dev
+```
+
+The frontend usually runs at `http://localhost:5173`.
+
+## Useful Commands
+
+```bash
+npm run web:check
+npm run web:build
+npm run web:vercel-build
+npm run server:build
+npm run common:build
+```
+
+Run the full workspace check:
+
+```bash
+npm run check
+```
+
+## Deploying to Vercel
+
+The web app is configured for Vercel with:
+
+- `vercel.json`
+- `@sveltejs/adapter-vercel`
+- `npm run web:vercel-build`
+
+Deploy production:
+
+```bash
+npx vercel deploy --prod
+```
+
+Before deploying, make sure the Vercel project has the required production environment variables:
+
+```text
+PUBLIC_SERVER_ORIGIN
+PUBLIC_FRONTEND_CODE
+FTC_EVENTS_USERNAME
+FTC_EVENTS_AUTH_KEY
+FTC_EVENTS_API_BASE_URL
+```
+
+If the deployed site shows an internal error, first check that `PUBLIC_SERVER_ORIGIN` is not set to `localhost:4000` in Vercel.
+
+## Notes
+
+- `PUBLIC_*` variables are visible in the browser. Never put secrets in `PUBLIC_*` values.
+- FTC Events credentials should stay server-side.
+- The frontend deployment can use the production GraphQL origin while the local dev app can use `localhost:4000`.
+- Build warnings about large chunks may appear because some visualization/stat bundles are large; they do not necessarily mean deployment failed.
+
