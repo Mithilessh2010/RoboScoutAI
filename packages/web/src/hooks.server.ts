@@ -1,5 +1,8 @@
 import type { Handle } from "@sveltejs/kit";
 import { THEME_COOKIE_NAME } from "./lib/constants";
+import { loadServerEnv } from "$lib/server/env";
+
+loadServerEnv();
 
 export const handle: Handle = async ({ event, resolve }) => {
     let theme = "system";

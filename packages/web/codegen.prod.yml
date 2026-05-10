@@ -1,4 +1,4 @@
-schema: "https://api.ftcscout.org/graphql"
+schema: "http://localhost:5173/graphql"
 documents: "./src/lib/graphql/**/*.graphql"
 generates:
     ./src/lib/graphql/generated/graphql-operations.ts:

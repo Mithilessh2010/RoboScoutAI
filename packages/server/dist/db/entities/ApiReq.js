@@ -9,9 +9,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.apiLoggerMiddleware = exports.ApiReq = void 0;
+exports.ApiReq = void 0;
 const typeorm_1 = require("typeorm");
-const constants_1 = require("../../constants");
 let ApiReq = exports.ApiReq = class ApiReq extends typeorm_1.BaseEntity {
 };
 __decorate([
@@ -33,12 +32,4 @@ __decorate([
 exports.ApiReq = ApiReq = __decorate([
     (0, typeorm_1.Entity)()
 ], ApiReq);
-function apiLoggerMiddleware(req, _, next) {
-    var _a;
-    if (!(constants_1.FRONTEND_CODE in req.headers) && ((_a = req.body) === null || _a === void 0 ? void 0 : _a["operationName"]) != "IntrospectionQuery") {
-        ApiReq.save({ req: req.body, headers: req.rawHeaders });
-    }
-    next();
-}
-exports.apiLoggerMiddleware = apiLoggerMiddleware;
 //# sourceMappingURL=ApiReq.js.map

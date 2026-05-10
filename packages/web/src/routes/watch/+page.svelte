@@ -39,11 +39,21 @@
     function toggleFocus(id: string) {
         focusId = focusId === id ? null : id;
     }
+
+    function closeModal() {
+        showModal = false;
+    }
+
+    function handleKeydown(event: KeyboardEvent) {
+        if (showModal && event.key === 'Escape') closeModal();
+    }
 </script>
 
 <svelte:head>
     <title>Watch | RoboScoutAI</title>
 </svelte:head>
+
+<svelte:window on:keydown={handleKeydown} />
 
 <main class="watch-page">
     <header class="topbar">
@@ -95,8 +105,9 @@
     {/if}
 
     {#if showModal}
-        <div class="modal" role="dialog" tabindex="-1" on:click={() => (showModal = false)} on:keydown={(e) => e.key === 'Escape' && (showModal = false)}>
-            <form class="modal-card" on:click|stopPropagation on:submit|preventDefault={addStream}>
+        <div class="modal" role="dialog">
+            <button class="modal-backdrop" aria-label="Close dialog" on:click={closeModal}></button>
+            <form class="modal-card" on:submit|preventDefault={addStream}>
                 <h3>Add Stream</h3>
                 {#if error}
                     <p class="error">{error}</p>
@@ -111,7 +122,7 @@
                 </label>
                 <div class="row actions">
                     <button type="submit">Add</button>
-                    <button type="button" on:click={() => (showModal = false)}>Cancel</button>
+                    <button type="button" on:click={closeModal}>Cancel</button>
                 </div>
             </form>
         </div>
@@ -130,7 +141,8 @@
     iframe { width:100%; aspect-ratio:16/9; border:0 }
     .meta { display:flex; justify-content:space-between; align-items:center; margin-top:8px }
     .meta-actions { display:flex; gap:8px }
-    .modal { position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,0.45) }
-    .modal-card { background:var(--panel-bg, rgba(31,34,71,0.9)); padding:18px; border-radius:10px; width:min(640px,92%) }
+    .modal { position:fixed; inset:0; display:grid; place-items:center }
+    .modal-backdrop { position:absolute; inset:0; width:100%; height:100%; border:0; border-radius:0; padding:0; background:rgba(0,0,0,0.45) }
+    .modal-card { position:relative; background:var(--panel-bg, rgba(31,34,71,0.9)); padding:18px; border-radius:10px; width:min(640px,92%) }
     .error { color:#ffb3c9 }
 </style>

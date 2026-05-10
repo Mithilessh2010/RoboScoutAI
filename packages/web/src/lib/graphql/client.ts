@@ -1,19 +1,14 @@
-import { env } from "$env/dynamic/public";
 import {
     HttpLink,
     ApolloClient,
     type HttpOptions,
     type NormalizedCacheObject,
     InMemoryCache,
-    split,
 } from "@apollo/client/core";
 import { IS_DEV } from "../constants";
 import { browser } from "$app/environment";
 import { DESCRIPTORS_LIST } from "@ftc-scout/common";
-import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
 import { createPersistedQueryLink } from "@apollo/client/link/persisted-queries";
-import { createClient } from "graphql-ws";
-import { getMainDefinition } from "@apollo/client/utilities";
 import { sha256 } from "crypto-hash";
 
 let client: ApolloClient<NormalizedCacheObject> | null = null;
@@ -24,35 +19,14 @@ export function getClient(
     if (client) return client;
     if (!fetch) throw "First call to get client must provide fetch";
 
-    let s = IS_DEV ? "" : "s";
-
     let httpLink = new HttpLink({
-        uri: `http${s}://${env.PUBLIC_SERVER_ORIGIN}/graphql`,
+        uri: "/graphql",
         credentials: "omit",
-        headers: { [env.PUBLIC_FRONTEND_CODE!]: "." },
         fetch,
     });
 
-    let link = browser
-        ? split(
-              ({ query }) => {
-                  let definition = getMainDefinition(query);
-                  return (
-                      definition.kind == "OperationDefinition" &&
-                      definition.operation == "subscription"
-                  );
-              },
-              new GraphQLWsLink(
-                  createClient({
-                      url: `ws${s}://${env.PUBLIC_SERVER_ORIGIN}/graphql`,
-                  })
-              ),
-              httpLink
-          )
-        : httpLink;
-
     const linkChain = createPersistedQueryLink({ sha256, useGETForHashedQueries: true }).concat(
-        link
+        httpLink
     );
 
     let cache = new InMemoryCache({
