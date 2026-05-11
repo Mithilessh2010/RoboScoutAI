@@ -31,7 +31,10 @@ function generateCacheKey(
     return `gql:${operationName}:${hash.digest("hex")}`;
 }
 
-export function responseCachePlugin(cache: KeyValueCache): ApolloServerPlugin {
+export function responseCachePlugin(
+    cache: KeyValueCache,
+    ttlOverrideSeconds?: number
+): ApolloServerPlugin {
     console.log(
         "[RESPONSE CACHE PLUGIN] Initialized with cache config:",
         Object.keys(CACHE_CONFIG)
@@ -60,6 +63,9 @@ export function responseCachePlugin(cache: KeyValueCache): ApolloServerPlugin {
                     }
 
                     ttl = config.maxAge || 0;
+                    if (typeof ttlOverrideSeconds === "number") {
+                        ttl = Math.min(ttl, Math.max(0, ttlOverrideSeconds));
+                    }
                     shouldCache = ttl > 0;
 
                     if (!shouldCache) {

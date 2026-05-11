@@ -33,6 +33,9 @@ export function getClient(
         uri: `http${s}://${serverOrigin}/graphql`,
         credentials: "omit",
         headers: { [FRONTEND_REQUEST_HEADER]: "." },
+        fetchOptions: {
+            cache: "no-store",
+        },
         fetch,
     });
 
@@ -54,7 +57,7 @@ export function getClient(
           )
         : httpLink;
 
-    const linkChain = createPersistedQueryLink({ sha256, useGETForHashedQueries: true }).concat(
+    const linkChain = createPersistedQueryLink({ sha256, useGETForHashedQueries: false }).concat(
         link
     );
 
@@ -99,6 +102,15 @@ export function getClient(
         connectToDevTools: IS_DEV,
         link: linkChain,
         cache,
+        defaultOptions: {
+            query: {
+                fetchPolicy: "network-only",
+            },
+            watchQuery: {
+                fetchPolicy: "cache-and-network",
+                nextFetchPolicy: "cache-first",
+            },
+        },
     });
 
     // Don't cache the client on the server

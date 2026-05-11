@@ -6,7 +6,7 @@ import express, { text } from "express";
 import cors from "cors";
 import compression from "compression";
 import { apiLoggerMiddleware } from "./db/entities/ApiReq";
-import { SERVER_PORT, SYNC_API } from "./constants";
+import { RESPONSE_CACHE_SECONDS, SERVER_PORT, SYNC_API } from "./constants";
 import { ApolloServer } from "@apollo/server";
 import { ApolloServerPluginLandingPageLocalDefault } from "@apollo/server/plugin/landingPage/default";
 import { expressMiddleware } from "@apollo/server/express4";
@@ -66,7 +66,9 @@ async function main() {
                 footer: false,
                 embed: { runTelemetry: false, endpointIsEditable: false },
             }),
-            responseCachePlugin(serverCache),
+            ...(RESPONSE_CACHE_SECONDS > 0
+                ? [responseCachePlugin(serverCache, RESPONSE_CACHE_SECONDS)]
+                : []),
             ApolloServerPluginDrainHttpServer({ httpServer }),
             {
                 async serverWillStart() {

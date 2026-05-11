@@ -50,7 +50,6 @@ Create or update `packages/web/.env.local`:
 
 ```env
 PUBLIC_SERVER_ORIGIN="localhost:4000"
-PUBLIC_FRONTEND_CODE="local-dev-frontend-code"
 FTC_EVENTS_USERNAME="your_ftc_events_username"
 FTC_EVENTS_AUTH_KEY="your_ftc_events_authorization_key"
 FTC_EVENTS_API_BASE_URL="https://ftc-api.firstinspires.org/v2.0"
@@ -70,15 +69,13 @@ Create or update `packages/server/.env`:
 FTC_API_KEY="base64_username_colon_authorization_key"
 DATABASE_URL="postgres://user:password@localhost:5432/database"
 PORT=4000
-FRONTEND_CODE="local-dev-frontend-code"
 LOGGING=0
 SYNC_DB=1
 SYNC_API=1
 CACHE_REQ=1
+RESPONSE_CACHE_SECONDS=0
 DB_TIMEOUT=5000
 ```
-
-`FRONTEND_CODE` should match `PUBLIC_FRONTEND_CODE`.
 
 ## Local Development
 
@@ -138,7 +135,6 @@ Before deploying, make sure the Vercel project has the required production envir
 
 ```text
 PUBLIC_SERVER_ORIGIN
-PUBLIC_FRONTEND_CODE
 FTC_EVENTS_USERNAME
 FTC_EVENTS_AUTH_KEY
 FTC_EVENTS_API_BASE_URL
@@ -166,4 +162,5 @@ More details: [WATCH_ROOM_NOTES.md](./WATCH_ROOM_NOTES.md)
 - `PUBLIC_*` variables are visible in the browser. Never put secrets in `PUBLIC_*` values.
 - FTC Events credentials should stay server-side.
 - The frontend deployment can use the production GraphQL origin while the local dev app can use `localhost:4000`.
+- For fresher reload data on the backend, keep `RESPONSE_CACHE_SECONDS=0`.
 - Build warnings about large chunks may appear because some visualization/stat bundles are large; they do not necessarily mean deployment failed.

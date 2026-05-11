@@ -10,3 +10,4 @@ export const SYNC_DB = process.env.SYNC_DB === "1";
 export const SYNC_API = process.env.SYNC_API !== "0";
 export const CACHE_REQ = process.env.CACHE_REQ === "1" && IS_DEV;
 export const DB_TIMEOUT = process.env.DB_TIMEOUT;
+export const RESPONSE_CACHE_SECONDS = Math.max(0, +(process.env.RESPONSE_CACHE_SECONDS ?? "0"));

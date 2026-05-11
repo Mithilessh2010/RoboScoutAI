@@ -10,5 +10,6 @@ declare namespace NodeJS {
         SYNC_DB: string;
         SYNC_API: string;
         CACHE_REQ: string;
+        RESPONSE_CACHE_SECONDS?: string;
     }
 }
