@@ -10,8 +10,5 @@ declare namespace NodeJS {
         SYNC_DB: string;
         SYNC_API: string;
         CACHE_REQ: string;
-
-        // Secrets
-        FRONTEND_CODE: string;
     }
 }

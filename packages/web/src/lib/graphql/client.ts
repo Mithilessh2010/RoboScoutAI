@@ -1,4 +1,3 @@
-import { env } from "$env/dynamic/public";
 import {
     HttpLink,
     ApolloClient,
@@ -17,6 +16,8 @@ import { getMainDefinition } from "@apollo/client/utilities";
 import { sha256 } from "crypto-hash";
 import { getServerOrigin } from "$lib/util/server-origin";
 
+const FRONTEND_REQUEST_HEADER = "x-roboscoutai-frontend";
+
 let client: ApolloClient<NormalizedCacheObject> | null = null;
 
 export function getClient(
@@ -27,12 +28,11 @@ export function getClient(
 
     let s = IS_DEV ? "" : "s";
     let serverOrigin = getServerOrigin();
-    let frontendCode = env.PUBLIC_FRONTEND_CODE || "local-dev-frontend-code";
 
     let httpLink = new HttpLink({
         uri: `http${s}://${serverOrigin}/graphql`,
         credentials: "omit",
-        headers: { [frontendCode]: "." },
+        headers: { [FRONTEND_REQUEST_HEADER]: "." },
         fetch,
     });
 
