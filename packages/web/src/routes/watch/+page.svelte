@@ -1,4 +1,7 @@
 <script lang="ts">
+    import { browser } from '$app/environment';
+    import { goto } from '$app/navigation';
+    import { getParticipantId, getDisplayName, createWatchRoom, patchWatchRoom } from '$lib/watch-room/api';
     import { getStreamEmbedUrl } from '$lib/watch-room/streamUtils';
 
     let streams: Array<{ id: string; title: string; url: string; embedUrl: string | null; provider: string | null }> = [];
@@ -7,6 +10,7 @@
     let title = '';
     let error = '';
     let focusId: string | null = null;
+    let creating = false;
 
     function openAdd() {
         error = '';
@@ -22,7 +26,7 @@
             error = 'Paste a stream link first.';
             return;
         }
-        const { provider, embedUrl } = getStreamEmbedUrl(trimmed);
+        const { provider, embedUrl } = getStreamEmbedUrl(trimmed, browser ? location.origin : undefined);
         if (!embedUrl) {
             error = 'Unsupported stream link. Try a YouTube or Twitch link.';
             return;
@@ -39,6 +43,35 @@
     function toggleFocus(id: string) {
         focusId = focusId === id ? null : id;
     }
+
+    async function startParty() {
+        if (streams.length === 0) return;
+        creating = true;
+        try {
+            const participantId = getParticipantId();
+            const displayName = getDisplayName() || 'Host';
+            const room = await createWatchRoom({ name: 'Watch Party', participantId, displayName, controlMode: 'HOST_ONLY' });
+            if (streams.length) {
+                const ts = new Date().toISOString();
+                const payload = streams.map((s, idx) => ({
+                    id: s.id,
+                    title: s.title,
+                    url: s.url,
+                    embedUrl: s.embedUrl,
+                    position: idx,
+                    isMain: idx === 0,
+                    createdAt: ts,
+                    updatedAt: ts,
+                }));
+                await patchWatchRoom(room.id, { streams: payload });
+            }
+            goto(`/watch/party/${room.id}`);
+        } catch (err) {
+            error = err instanceof Error ? err.message : 'Unable to create party.';
+        } finally {
+            creating = false;
+        }
+    }
 </script>
 
 <svelte:head>
@@ -50,6 +83,7 @@
         <h1>Watch</h1>
         <div class="actions">
             <button on:click={openAdd}>Add Stream</button>
+            <button on:click={startParty} disabled={streams.length === 0 || creating}>{creating ? 'Starting...' : 'Start Party'}</button>
         </div>
     </header>
 
@@ -64,7 +98,7 @@
                 {#each streams as s (s.id)}
                     {#if s.id === focusId}
                         <div class="focus">
-                            <iframe title={s.title} src={s.embedUrl} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy" />
+                            <iframe title={s.title} src={s.embedUrl} allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" allowfullscreen />
                             <div class="meta">
                                 <strong>{s.title}</strong>
                                 <div class="meta-actions">
@@ -79,7 +113,7 @@
                 <div class="grid">
                     {#each streams as s (s.id)}
                         <article class="stream-card">
-                            <iframe title={s.title} src={s.embedUrl} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen loading="lazy" />
+                            <iframe title={s.title} src={s.embedUrl} allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" allowfullscreen />
                             <div class="meta">
                                 <strong>{s.title}</strong>
                                 <div class="meta-actions">
