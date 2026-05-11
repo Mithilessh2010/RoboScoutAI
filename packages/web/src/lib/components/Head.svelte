@@ -10,6 +10,7 @@
     export let canonical: string | null = null;
 
     // import { env } from "$env/dynamic/public";
+    // const endpoint = `http${IS_DEV ? "" : "s"}://${env.PUBLIC_SERVER_ORIGIN}`;
 </script>
 
 <svelte:head>

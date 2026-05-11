@@ -8,10 +8,10 @@
 
 <main>
     <section>
-        <p>Event Watch</p>
+        <p>Event Watch Room</p>
         <h1>{data.season} {data.eventCode}</h1>
-        <span>Open the local Watch page, then add the event livestreams you want to monitor.</span>
-        <a href="/watch">Open Watch</a>
+        <span>Create a room prefilled with this event code, then add the event livestreams you want to monitor.</span>
+        <a href={`/watch/create?season=${data.season}&eventCode=${data.eventCode}`}>Create watch room</a>
     </section>
 </main>
 

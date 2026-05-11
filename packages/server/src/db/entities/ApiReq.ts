@@ -1,4 +1,6 @@
 import { BaseEntity, Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from "typeorm";
+import { Request, Response, NextFunction } from "express";
+import { FRONTEND_CODE } from "../../constants";
 
 @Entity()
 export class ApiReq extends BaseEntity {
@@ -13,4 +15,12 @@ export class ApiReq extends BaseEntity {
 
     @CreateDateColumn({ type: "timestamptz" })
     createdAt!: Date;
+}
+
+// Log uses of our api that aren't the frontend.
+export function apiLoggerMiddleware(req: Request, _: Response, next: NextFunction) {
+    if (!(FRONTEND_CODE in req.headers) && req.body?.["operationName"] != "IntrospectionQuery") {
+        ApiReq.save({ req: req.body, headers: req.rawHeaders as any });
+    }
+    next();
 }
