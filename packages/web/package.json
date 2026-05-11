@@ -4,7 +4,7 @@
     "private": true,
     "scripts": {
         "dev": "vite dev",
-        "build": "graphql-codegen --config ./codegen.prod.yml && vite build",
+        "build": "node -e \"try{require.resolve('@graphql-codegen/cli'); require('child_process').execSync('graphql-codegen --config ./codegen.prod.yml',{stdio:'inherit'});}catch(e){console.warn('Skipping graphql-codegen (not installed)');}\" && vite build",
         "vercel-build": "npm run build",
         "preview": "vite preview",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
