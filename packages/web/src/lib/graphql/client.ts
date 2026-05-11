@@ -15,6 +15,7 @@ import { createPersistedQueryLink } from "@apollo/client/link/persisted-queries"
 import { createClient } from "graphql-ws";
 import { getMainDefinition } from "@apollo/client/utilities";
 import { sha256 } from "crypto-hash";
+import { getServerOrigin } from "$lib/util/server-origin";
 
 let client: ApolloClient<NormalizedCacheObject> | null = null;
 
@@ -25,11 +26,13 @@ export function getClient(
     if (!fetch) throw "First call to get client must provide fetch";
 
     let s = IS_DEV ? "" : "s";
+    let serverOrigin = getServerOrigin();
+    let frontendCode = env.PUBLIC_FRONTEND_CODE || "local-dev-frontend-code";
 
     let httpLink = new HttpLink({
-        uri: `http${s}://${env.PUBLIC_SERVER_ORIGIN}/graphql`,
+        uri: `http${s}://${serverOrigin}/graphql`,
         credentials: "omit",
-        headers: { [env.PUBLIC_FRONTEND_CODE!]: "." },
+        headers: { [frontendCode]: "." },
         fetch,
     });
 
@@ -44,7 +47,7 @@ export function getClient(
               },
               new GraphQLWsLink(
                   createClient({
-                      url: `ws${s}://${env.PUBLIC_SERVER_ORIGIN}/graphql`,
+                      url: `ws${s}://${serverOrigin}/graphql`,
                   })
               ),
               httpLink
