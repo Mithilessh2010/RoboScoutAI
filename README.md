@@ -77,6 +77,13 @@ RESPONSE_CACHE_SECONDS=0
 DB_TIMEOUT=5000
 ```
 
+If you deploy the backend to Render and want the database to stay inside the service, use a persistent disk and set:
+
+```env
+DATABASE_URL="sqlite:/var/data/ftcscout.db"
+PORT=10000
+```
+
 ## Local Development
 
 Run these from the repo root.

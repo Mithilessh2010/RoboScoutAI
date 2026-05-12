@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: roboscoutai-server
+    runtime: docker
+    plan: starter
+    branch: main
+    rootDir: .
+    dockerfilePath: ./packages/server/Dockerfile
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: sqlite:/var/data/ftcscout.db
+      - key: FTC_API_KEY
+        sync: false
+      - key: PORT
+        value: 10000
+    disk:
+      name: roboscoutai-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -45,6 +45,17 @@ These are used by `packages/server` when running the database-backed GraphQL/API
 
 `FRONTEND_CODE` should match `PUBLIC_FRONTEND_CODE` when using the local backend.
 
+### Render backend setup
+
+For a Render deployment that keeps the database inside the backend service, use:
+
+```env
+DATABASE_URL="sqlite:/var/data/ftcscout.db"
+PORT=10000
+```
+
+Add `FTC_API_KEY` as a secret env var in Render, and mount a persistent disk at `/var/data`.
+
 ## Local Setup
 
 1. Copy `packages/web/.env.example` to `packages/web/.env.local`.
@@ -52,6 +63,8 @@ These are used by `packages/server` when running the database-backed GraphQL/API
 3. Fill in real FTC Events credentials locally.
 4. Keep `PUBLIC_SERVER_ORIGIN="localhost:4000"` locally if you run `packages/server`.
 5. Use `PUBLIC_SERVER_ORIGIN="api.ftcscout.org"` when deploying only the web app to Vercel.
+
+For Render, point `PUBLIC_SERVER_ORIGIN` at the Render service URL instead.
 
 ## Vercel Setup
 

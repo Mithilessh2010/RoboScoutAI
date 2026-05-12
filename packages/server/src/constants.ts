@@ -3,7 +3,7 @@ export const IS_DEV = !IS_PROD;
 
 export const DATABASE_URL = process.env.DATABASE_URL || "sqlite:./ftcscout.db";
 export const FTC_API_KEY = process.env.FTC_API_KEY;
-export const SERVER_PORT = IS_PROD ? 8080 : 4000;
+export const SERVER_PORT = +(process.env.PORT ?? (IS_PROD ? "8080" : "4000"));
 export const DB_TYPE = DATABASE_URL.startsWith("sqlite") ? "sqlite" : "postgres";
 
 // Hardcoded settings for consistent behavior
