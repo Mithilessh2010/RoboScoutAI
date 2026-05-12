@@ -34,7 +34,7 @@ These are used by `packages/server` when running the database-backed GraphQL/API
 | Variable | Package | Local | Vercel | Secret | Example |
 | --- | --- | --- | --- | --- | --- |
 | `FTC_API_KEY` | `packages/server` | yes | only if deploying server | yes | Base64 of `username:authorization-key` |
-| `DATABASE_URL` | `packages/server` | yes | only if deploying server | yes | `postgres://user:password@localhost:5432/ftcscoutdb` |
+| `DATABASE_URL` | `packages/server` | yes | yes | yes | `mongodb+srv://user:password@cluster.mongodb.net/ftcscout?retryWrites=true&w=majority` |
 | `PORT` | `packages/server` | yes | usually platform-provided | no | `4000` |
 | `FRONTEND_CODE` | `packages/server` | yes | only if deploying server | yes-ish | `local-dev-frontend-code` |
 | `LOGGING` | `packages/server` | yes | only if deploying server | no | `0` |
@@ -45,16 +45,9 @@ These are used by `packages/server` when running the database-backed GraphQL/API
 
 `FRONTEND_CODE` should match `PUBLIC_FRONTEND_CODE` when using the local backend.
 
-### Render backend setup
+### Vercel backend setup
 
-For a Render deployment that keeps the database inside the backend service, use:
-
-```env
-DATABASE_URL="sqlite:/var/data/ftcscout.db"
-PORT=10000
-```
-
-Add `FTC_API_KEY` as a secret env var in Render, and mount a persistent disk at `/var/data`.
+Set `DATABASE_URL` to your MongoDB Atlas connection string and keep `FTC_API_KEY` as a secret environment variable.
 
 ## Local Setup
 

@@ -8,7 +8,7 @@
 - `packages/server/.env.example` and `packages/web/.env.example`.
 - Server env usage in `packages/server/src/constants.ts` and `packages/server/src/env.d.ts`.
 - FTC API credential usage in `packages/server/src/ftc-api/get-from-ftc-api.ts`.
-- Database setup in `packages/server/src/db/data-source.ts`.
+- Database setup in `packages/server/src/db/mongodb.ts` and `packages/server/src/db/schemas/`.
 - Server startup/API sync in `packages/server/src/index.ts` and `packages/server/src/ftc-api/watch.ts`.
 - Web env/codegen usage in `packages/web/src/lib/graphql/client.ts`, `packages/web/codegen.yml`, and related SvelteKit config.
 - TypeScript configs for root, common, server, and web packages.
@@ -19,7 +19,7 @@
 - Updated `.gitignore` to protect local env files, dependency folders, build output, `.DS_Store`, and TypeScript build info.
 - Clarified `packages/server/.env.example` with safe placeholders and exact local variable names.
 - Clarified `packages/web/.env.example` with safe placeholders and matching frontend code guidance.
-- Fixed a server startup crash in `packages/server/src/graphql/resolvers/BestName.ts` by using TypeORM's repository delete API for old BestName cleanup.
+- Migrated the server backend from TypeORM to MongoDB/Mongoose and removed the old backend config files.
 - Added `SETUP_LOCAL.md`.
 - Added this `RUN_STATUS.md`.
 
@@ -27,32 +27,13 @@
 
 - `npm install` completed successfully. It reported dependency audit warnings, but no install failure.
 - `pg_isready -h localhost -p 5432` confirmed Postgres is accepting connections.
-- `psql 'postgres://ftcscoutuser:ftcscoutpassword@localhost:5432/ftcscoutdb' -c 'select current_database(), current_user;'` confirmed the requested local DB URL works.
-- `npm run common:build` passed.
-- `npm run server:build` passed after common was built.
-- `npm run common:watch` started and reported 0 TypeScript errors, then was manually stopped.
-- `npm run server:watch` started and reported 0 TypeScript errors, then was manually stopped.
-- `npm run server:dev` was smoke-tested with inline temporary env values and `SYNC_API=0`; it started on port 4000.
-- `npm run web:gen` passed against the local server.
-- `npm run web:check` passed with 0 errors and 2 existing unused CSS selector warnings.
-- `npm run web:dev` started on `http://localhost:5173/`.
-- `curl -I http://localhost:5173/` returned `200 OK` when using the plain documented `npm run web:dev`.
-- `curl http://localhost:4000/graphql` with `{ __typename }` returned a GraphQL response.
-- `npm run web:build` passed with warnings only.
+- The MongoDB/Vercel migration was committed and pushed.
 
 ## What Works
 
 - Dependencies install.
-- Local Postgres is reachable with:
-
-```text
-postgres://ftcscoutuser:ftcscoutpassword@localhost:5432/ftcscoutdb
-```
-
-- TypeORM schema synchronization works with `SYNC_DB=1`.
-- Backend starts locally when env values are present.
-- Web GraphQL code generation works once the backend is running.
-- Web type check, dev server startup, and production build work.
+- MongoDB Atlas is the backend database.
+- Backend and API routes are oriented around Vercel serverless deployment.
 
 ## Still Needs Your Env Values
 

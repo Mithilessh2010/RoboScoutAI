@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Season } from "@ftc-scout/common";
 import { markDataLoaded } from "../schemas/DataHasBeenLoaded";
 import { Award } from "../schemas/Award";

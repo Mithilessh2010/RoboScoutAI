@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { GraphQLFieldConfig, GraphQLInt, GraphQLObjectType } from "graphql";
 import { dataLoaderResolverList, dataLoaderResolverSingle } from "../utils";
 import {

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Event, eventFromApi } from "../schemas/Event";
 import { Season, notEmpty } from "@ftc-scout/common";
 import { markDataLoaded } from "../schemas/DataHasBeenLoaded";

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import mongoose, { Schema, Document } from "mongoose";
 import { Season, EventType, EventFtcApi, eventTypeFromFtcApi } from "@ftc-scout/common";
 

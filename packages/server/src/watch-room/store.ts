@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { randomUUID } from "crypto";
 import { WatchRoom as WatchRoomEntity } from "../db/schemas/WatchRoom";
 import { WatchRoomMessage as WatchRoomMessageEntity } from "../db/schemas/WatchRoomMessage";

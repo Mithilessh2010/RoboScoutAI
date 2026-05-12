@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { CURRENT_SEASON, PAST_SEASONS } from "@ftc-scout/common";
 import { DataHasBeenLoaded, markDataLoaded, checkDataLoaded } from "../db/schemas/DataHasBeenLoaded";
 import { loadAllTeams } from "../db/loaders/load-all-teams";

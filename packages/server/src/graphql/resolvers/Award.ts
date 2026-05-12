@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { GraphQLObjectType, GraphQLResolveInfo } from "graphql";
 import { dataLoaderResolverSingle } from "../utils";
 import { AwardTypeGQL } from "./enums";

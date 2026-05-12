@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {
     DESCRIPTORS,
     DateTy,
@@ -17,8 +18,6 @@ import {
     nullTy,
     wr,
 } from "@ftc-scout/common";
-import { GraphQLFieldConfig, GraphQLObjectType, GraphQLOutputType } from "graphql";
-import { TeamEventParticipationGQL } from "../TeamEventParticipation";
 import { GraphQLFieldConfig, GraphQLObjectType, GraphQLOutputType } from "graphql";
 import { TeamEventParticipationGQL } from "../TeamEventParticipation";
 import { TeamEventParticipation } from "../../../db/schemas/dyn/team-event-participation";

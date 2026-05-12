@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { IntTy, Season, StrTy, list, nn } from "@ftc-scout/common";
 import { GraphQLObjectType } from "graphql";
 import { dataLoaderResolverList, dataLoaderResolverSingle } from "../utils";

@@ -4,20 +4,12 @@ Setting up an FTCScout development environment takes a few steps. This guide wil
 
 ## Setting up your database
 
-FTCScout uses a Postgres SQL database. You must set it up separately before running FTCScout.
+FTCScout uses MongoDB Atlas for the backend database.
 
 Example on Ubuntu:
 
 ```bash
-sudo apt install postgresql-client postgresql
-sudo -u postgres createuser ftcscoutuser
-sudo -u postgres createdb ftcscoutdb
-sudo -u postgres psql ftcscoutdb
-  alter user ftcscoutuser with encrypted password 'ftcscoutpassword';
-  grant all privileges on database ftcscoutdb to ftcscoutuser;
-  grant all privileges on schema public to ftcscoutuser;
-  \quit
-sudo systemctl restart postgresql
+# Create a MongoDB Atlas cluster, database user, and connection string instead.
 ```
 
 ## Getting an FTC API key
@@ -36,13 +28,13 @@ Inside of the `packages/server` directory, duplicate the `.env.example` file and
 
 You will also need a database connection URL. This should be in the format:
 
-`postgres://PGUSERNAME:PGPASSWORD@localhost:5432/DBNAME`
+`mongodb+srv://USERNAME:PASSWORD@CLUSTER.mongodb.net/DBNAME?retryWrites=true&w=majority`
 
 There is also a field called "frontend code". This is a simple string used to identify to the backend that an API request is coming from the frontend. It can be any string you want, just make sure it matches in the frontend and backend environment variables.
 
 Inside of the `packages/web` directory, duplicate the `.env.example` file and rename it to `.env`. Fill in the relevant fields, including the frontend code.
 
-The "backend origin" field is the URL of the backend server. Example: `localhost:4000`.
+The "backend origin" field is the URL of the backend server. Example: `localhost:4000` locally, or your deployed Vercel API origin in production.
 
 ## Installing dependencies
 
@@ -82,6 +74,6 @@ You should now see your very own FTCScout instance running on your computer!
 
 If you see an `unexpected end of JSON input` error, it means the API key is incorrect.
 
-If you see a `Connection Refused on port 5432` error, it means the database is not running, or your password or database URL is incorrect.
+If you see a MongoDB connection error, it usually means the Atlas URL, user, password, or network access is incorrect.
 
 If you have any other issues, come ask us for help on our [Discord](https://discord.gg/XTZhD9RnKa)!

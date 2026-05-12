@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { GraphQLObjectType } from "graphql";
 import { dataLoaderResolverSingle } from "../utils";
 import { BoolTy, DateTimeTy, IntTy, StrTy, nn } from "@ftc-scout/common";

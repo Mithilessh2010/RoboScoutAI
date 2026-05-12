@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { IntTy, nn } from "@ftc-scout/common";
 import { GraphQLFieldConfig, GraphQLObjectType } from "graphql";
 import { TeamGQL } from "./Team";

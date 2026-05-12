@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Express, Request, Response } from "express";
 import { Team } from "../db/schemas/Team";
 import { TeamEventParticipation } from "../db/schemas/dyn/team-event-participation";

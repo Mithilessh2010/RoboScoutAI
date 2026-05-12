@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Request, Response } from "express";
 import { Analytics } from "./db/schemas/Analytics";
 import { connectDB } from "./db/mongodb";

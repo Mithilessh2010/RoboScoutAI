@@ -1,6 +1,6 @@
 # FTCScout Local Setup
 
-This keeps the original FTCScout app running locally with Postgres and the FTC Events API.
+This keeps the FTCScout app running locally with MongoDB Atlas and the FTC Events API.
 Do not put real secrets in `.env.example` files or frontend code.
 
 ## Node
@@ -12,32 +12,15 @@ nvm use
 npm install
 ```
 
-## Postgres On Mac
+## MongoDB Atlas
 
-```bash
-brew install postgresql@16
-brew services start postgresql@16
-createuser ftcscoutuser
-createdb ftcscoutdb
-psql ftcscoutdb
-```
-
-Inside `psql`:
-
-```sql
-ALTER USER ftcscoutuser WITH PASSWORD 'ftcscoutpassword';
-GRANT ALL PRIVILEGES ON DATABASE ftcscoutdb TO ftcscoutuser;
-GRANT ALL PRIVILEGES ON SCHEMA public TO ftcscoutuser;
-\quit
-```
-
-Local database URL:
+Create an Atlas cluster, database user, and network access rule first. Then use the Atlas connection string as your database URL:
 
 ```text
-postgres://ftcscoutuser:ftcscoutpassword@localhost:5432/ftcscoutdb
+mongodb+srv://username:password@cluster.mongodb.net/ftcscout?retryWrites=true&w=majority
 ```
 
-FTCScout uses TypeORM with `SYNC_DB=1` to create/update the local schema. There are no separate migration commands in this repo.
+FTCScout uses Mongoose with `SYNC_DB=1` to connect and create/update collections as needed.
 
 ## FTC API Key
 
@@ -63,7 +46,7 @@ Required variables:
 
 ```env
 FTC_API_KEY="BASE64_ENCODED_FTC_EVENTS_USERNAME_COLON_AUTHORIZATION_KEY"
-DATABASE_URL="postgres://ftcscoutuser:ftcscoutpassword@localhost:5432/ftcscoutdb"
+DATABASE_URL="mongodb+srv://username:password@cluster.mongodb.net/ftcscout?retryWrites=true&w=majority"
 PORT=4000
 FRONTEND_CODE="local-dev-frontend-code"
 LOGGING=0

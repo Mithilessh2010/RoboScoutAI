@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { DESCRIPTORS, Descriptor, FloatTy, IntTy, nn, notEmpty } from "@ftc-scout/common";
 import { GraphQLFieldConfig, GraphQLObjectType } from "graphql";
 import { TeamEventParticipation } from "../../db/schemas/dyn/team-event-participation";

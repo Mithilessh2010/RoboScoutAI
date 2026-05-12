@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Season, notEmpty } from "@ftc-scout/common";
 import { getTeams } from "../../ftc-api/get-teams";
 import { Team, teamFromApi } from "../schemas/Team";

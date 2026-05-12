@@ -2,7 +2,7 @@
 
 ## 🎉 Migration Complete (75%)
 
-Your project has been successfully migrated from Fly.io + PostgreSQL to **Vercel + MongoDB Atlas**. Here's what's been set up:
+Your project has been migrated to **Vercel + MongoDB Atlas**. Here's what's been set up:
 
 ## ✅ What's Been Done
 
@@ -203,7 +203,7 @@ mongodb+srv://mithilesshb_db_user:L38MlBTExnQQNoAW@roboscout.z2u1tyy.mongodb.net
 
 ## 🎯 What Stays the Same
 
-Your frontend (SvelteKit) doesn't need changes - it will work the same way, just hitting the new Vercel endpoints instead of Fly.io.
+Your frontend (SvelteKit) doesn't need changes - it will work the same way, just hitting the new Vercel endpoints.
 
 ---
 

@@ -29,7 +29,7 @@ packages/
 
 - Node.js 24 for the Vercel web deployment path
 - npm
-- PostgreSQL if running the local backend database
+- MongoDB Atlas for the backend database
 - FTC Events API credentials for live official FTC data
 
 ## Install
@@ -67,7 +67,7 @@ Create or update `packages/server/.env`:
 
 ```env
 FTC_API_KEY="base64_username_colon_authorization_key"
-DATABASE_URL="postgres://user:password@localhost:5432/database"
+DATABASE_URL="mongodb+srv://username:password@cluster.mongodb.net/ftcscout?retryWrites=true&w=majority"
 PORT=4000
 LOGGING=0
 SYNC_DB=1
@@ -76,8 +76,6 @@ CACHE_REQ=1
 RESPONSE_CACHE_SECONDS=0
 DB_TIMEOUT=5000
 ```
-
-If you deploy the backend to Render and want the database to stay inside the service, use a persistent disk and set:
 
 ```env
 DATABASE_URL="sqlite:/var/data/ftcscout.db"

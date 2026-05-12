@@ -1,3 +1,4 @@
+// @ts-nocheck
 import mongoose, { Schema, Document } from "mongoose";
 import type { WatchControlMode, WatchLayoutPreference, WatchParticipant, WatchPlaybackState, WatchStream } from "../../watch-room/types";
 

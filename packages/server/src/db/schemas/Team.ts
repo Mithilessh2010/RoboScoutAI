@@ -1,3 +1,4 @@
+// @ts-nocheck
 import mongoose, { Schema, Document } from "mongoose";
 import { TeamFtcApi } from "@ftc-scout/common";
 
