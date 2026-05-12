@@ -1,6 +1,6 @@
 import type { Express, Response, Request } from "express";
-import { Team } from "../db/entities/Team";
-import { Event } from "../db/entities/Event";
+import { Team } from "../db/schemas/Team";
+import { Event } from "../db/schemas/Event";
 import { ALL_SEASONS } from "@ftc-scout/common";
 
 export function setupSiteMap(app: Express) {
@@ -17,7 +17,7 @@ async function sitemap(_req: Request, res: Response) {
 
     let teams = await Team.find();
     let events = await Event.find();
-    let seasons = await ALL_SEASONS;
+    let seasons = ALL_SEASONS;
 
     for (const team of teams) {
         urls.push(`/teams/${team.number}`);

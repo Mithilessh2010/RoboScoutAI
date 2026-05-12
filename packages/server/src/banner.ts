@@ -1,12 +1,12 @@
 import * as core from "express-serve-static-core";
 import { resolve } from "path";
-import { Team } from "./db/entities/Team";
-import { TeamEventParticipation } from "./db/entities/dyn/team-event-participation";
+import { Team } from "./db/schemas/Team";
+import { TeamEventParticipation } from "./db/schemas/dyn/team-event-participation";
 import { CURRENT_SEASON, DESCRIPTORS, Season } from "@ftc-scout/common";
-import { Event } from "./db/entities/Event";
+import { Event } from "./db/schemas/Event";
 import { createCanvas, registerFont, Image } from "canvas";
 import { readFile } from "fs/promises";
-import { MatchScore } from "./db/entities/dyn/match-score";
+import { MatchScore } from "./db/schemas/dyn/match-score";
 import { DateTime } from "luxon";
 
 function sendBanner(res: core.Response) {
@@ -32,17 +32,31 @@ export function setupBannerRoutes(app: core.Express) {
 }
 
 async function teamBanner(number: number, res: core.Response) {
-    let teamData = await Team.findOneBy({ number });
+    let teamData = await Team.findOne({ number });
     if (!teamData) return sendBanner(res);
 
     let pensSub = DESCRIPTORS[CURRENT_SEASON].pensSubtract;
-    let bestEvent = await TeamEventParticipation[CURRENT_SEASON].createQueryBuilder("tep")
-        .leftJoin(Event, "e", "e.code = tep.event_code")
-        .where("tep.team_number = :number", { number })
-        .andWhere("NOT e.remote")
-        .orderBy(pensSub ? "opr_total_points" : "opr_total_points_np", "DESC")
-        .limit(1)
-        .getOne();
+    let bestEvent = await TeamEventParticipation[CURRENT_SEASON]
+        .aggregate([
+            { $match: { teamNumber: number, season: CURRENT_SEASON } },
+            {
+                $lookup: {
+                    from: Event.collection.name,
+                    localField: "eventCode",
+                    foreignField: "code",
+                    as: "event",
+                },
+            },
+            { $unwind: "$event" },
+            { $match: { "event.remote": false } },
+            {
+                $sort: {
+                    [pensSub ? "oprTotalPoints" : "totalPointsNp"]: -1,
+                },
+            },
+            { $limit: 1 },
+        ])
+        .then((rows: any[]) => rows[0] ?? null);
     let bestOpr = bestEvent?.opr?.[pensSub ? "totalPoints" : "totalPointsNp"] ?? null;
     let bestOprStr = bestOpr != null ? Math.round(bestOpr * 100) / 100 + "" : "N/A";
 
@@ -80,24 +94,17 @@ async function teamBanner(number: number, res: core.Response) {
 }
 
 export async function eventBanner(season: Season, code: string, res: core.Response) {
-    let eventData = await Event.findOneBy({ season, code });
+    let eventData = await Event.findOne({ season, code });
     if (!eventData) return sendBanner(res);
 
     let bestMatch = await MatchScore[season]
-        .createQueryBuilder("ms")
-        .where("ms.event_code = :code", { code })
-        .orderBy("ms.total_points", "DESC")
-        .limit(1)
-        .getOne();
-    let bestScore = bestMatch?.totalPoints ?? null;
+        .findOne({ season, eventCode: code })
+        .sort({ "scores.totalPoints": -1 });
+    let bestScore = bestMatch?.scores?.totalPoints ?? bestMatch?.totalPoints ?? null;
 
     let winningTeam = await TeamEventParticipation[season]
-        .createQueryBuilder("tep")
-        .where("tep.event_code = :code", { code })
-        .andWhere("tep.rp IS NOT NULL")
-        .orderBy("tep.rp", "DESC")
-        .limit(1)
-        .getOne();
+        .findOne({ season, eventCode: code, rp: { $ne: null } })
+        .sort({ rp: -1 });
     let winningTeamNum = winningTeam?.teamNumber ?? null;
 
     registerFont("src/res/Inter-SemiBold.ttf", { family: "InterSB" });

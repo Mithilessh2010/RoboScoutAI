@@ -3,11 +3,6 @@ import { GraphQLFieldConfig, GraphQLObjectType } from "graphql";
 import { TeamGQL } from "./Team";
 import { Team } from "../../db/schemas/Team";
 import { BestName } from "../../db/schemas/BestName";
-import { IntTy, nn } from "@ftc-scout/common";
-import { GraphQLFieldConfig, GraphQLObjectType } from "graphql";
-import { TeamGQL } from "./Team";
-import { Team } from "../../db/schemas/Team";
-import { BestName } from "../../db/schemas/BestName";
 
 async function deleteOld() {
     try {
@@ -43,16 +38,29 @@ export const BestNameQueries: Record<string, GraphQLFieldConfig<any, any>> = {
     getBestName: {
         type: BestNameGQL,
         resolve: async () => {
-            let teams = await Team.find({}).limit(2);
-            // Shuffle using a random aggregation stage
             let teamCount = await Team.countDocuments({});
-            let randomIndices = [Math.floor(Math.random() * teamCount), Math.floor(Math.random() * teamCount)];
-            teams = await Team.find({}).skip(randomIndices[0]).limit(1).concat(await Team.find({}).skip(randomIndices[1]).limit(1));
-            let bestName = BestName.create({
+            if (teamCount < 2) {
+                throw new Error("Need at least two teams to create a BestName prompt.");
+            }
+
+            let randomIndices = [
+                Math.floor(Math.random() * teamCount),
+                Math.floor(Math.random() * teamCount),
+            ];
+
+            let teams = await Promise.all(
+                randomIndices.map((index) => Team.findOne().skip(index))
+            );
+
+            if (!teams[0] || !teams[1]) {
+                throw new Error("Failed to select two random teams.");
+            }
+
+            let bestName = await BestName.create({
+                id: Date.now(),
                 team1: teams[0].number,
                 team2: teams[1].number,
             });
-            await bestName.save();
             return {
                 id: bestName.id,
                 team1D: teams[0],
@@ -70,26 +78,30 @@ export const BestNameMutations: Record<string, GraphQLFieldConfig<any, any>> = {
             vote: IntTy,
         },
         resolve: async (_, { id, vote }: { id: number; vote: number }) => {
-            await BestName.updateOne(
-                { id, $or: [{ team1: vote }, { team2: vote }] },
-                { $set: { vote } }
-            );
+            await BestName.updateOne({ id }, { $set: { vote } });
 
             let teamCount = await Team.countDocuments({});
-            let randomIndices = [Math.floor(Math.random() * teamCount), Math.floor(Math.random() * teamCount)];
+            let randomIndices = [
+                Math.floor(Math.random() * teamCount),
+                Math.floor(Math.random() * teamCount),
+            ];
             let teams = await Promise.all([
-                Team.find({}).skip(randomIndices[0]).limit(1),
-                Team.find({}).skip(randomIndices[1]).limit(1)
+                Team.findOne().skip(randomIndices[0]),
+                Team.findOne().skip(randomIndices[1]),
             ]);
-            let bestName = BestName.create({
-                team1: teams[0][0].number,
-                team2: teams[1][0].number,
+            if (!teams[0] || !teams[1]) {
+                throw new Error("Failed to select two random teams.");
+            }
+
+            let bestName = await BestName.create({
+                id: Date.now(),
+                team1: teams[0].number,
+                team2: teams[1].number,
             });
-            await bestName.save();
             return {
                 id: bestName.id,
-                team1D: teams[0][0],
-                team2D: teams[1][0],
+                team1D: teams[0],
+                team2D: teams[1],
             };
         },
     },

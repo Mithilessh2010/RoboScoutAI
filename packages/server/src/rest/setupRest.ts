@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
-import { Team } from "../db/entities/Team";
-import { TeamEventParticipation } from "../db/entities/dyn/team-event-participation";
+import { Team } from "../db/schemas/Team";
+import { TeamEventParticipation } from "../db/schemas/dyn/team-event-participation";
 import {
     ALL_SEASONS,
     CURRENT_SEASON,
@@ -12,11 +12,11 @@ import {
     getRegionCodes,
     DESCRIPTORS,
 } from "@ftc-scout/common";
-import { Award } from "../db/entities/Award";
-import { TeamMatchParticipation } from "../db/entities/TeamMatchParticipation";
-import { Event } from "../db/entities/Event";
+import { Award } from "../db/schemas/Award";
+import { TeamMatchParticipation } from "../db/schemas/TeamMatchParticipation";
+import { Event } from "../db/schemas/Event";
 import { DateTime } from "luxon";
-import { Match } from "../db/entities/Match";
+import { Match } from "../db/schemas/Match";
 import { frontendMSFromDB } from "../graphql/dyn/match-score";
 import { getQuickStats } from "../graphql/resolvers/Team";
 import { addTypename } from "../graphql/dyn/tep";
@@ -182,7 +182,7 @@ async function watchRoomMessageCreate(req: Request<{ roomId: string }, unknown, 
 
 async function teamByNumber(req: Request<{ number: string }>, res: Response) {
     let number = +req.params.number;
-    let team = await Team.findOneBy({ number });
+    let team = await Team.findOne({ number });
 
     if (!team) {
         res.status(404).send(`No team with number ${number}.`);
@@ -194,9 +194,9 @@ async function teamByNumber(req: Request<{ number: string }>, res: Response) {
 
 async function getTeps(
     season: Season,
-    findOptions: FindOptionsWhere<TeamEventParticipation>
+    findOptions: Record<string, any>
 ): Promise<any> {
-    let participations = await TeamEventParticipation[season].findBy(findOptions);
+    let participations = await TeamEventParticipation[season].find(findOptions);
     let results = [];
 
     for (let p of participations) {
@@ -331,21 +331,26 @@ async function teamSearch(req: Request, res: Response) {
         return;
     }
 
-    let q = DATA_SOURCE.getRepository(Team).createQueryBuilder("t").distinctOn(["number"]);
+    let entities = await Team.find();
 
     if (region && region != RegionOption.All) {
-        q.leftJoin(TeamMatchParticipation, "m", "t.number = m.team_number")
-            .leftJoin(Event, "e", "e.season = m.season AND e.code = m.event_code")
-            .andWhere("e.region_code IN (:...regions)", {
-                regions: getRegionCodes(region),
-            });
+        let regionSet = new Set(getRegionCodes(region));
+        let events = await Event.find();
+        let allowedEvents = new Set(
+            events.filter((event) => event.regionCode != null && regionSet.has(event.regionCode)).map((event) => `${event.season}:${event.code}`)
+        );
+        let participations = await TeamMatchParticipation.find();
+        let allowedTeams = new Set(
+            participations
+                .filter((participation) => allowedEvents.has(`${participation.season}:${participation.eventCode}`))
+                .map((participation) => participation.teamNumber)
+        );
+        entities = entities.filter((team) => allowedTeams.has(team.number));
     }
 
     if (limit && (!searchText || searchText.trim() == "")) {
-        q.limit(+limit);
+        entities = entities.slice(0, +limit);
     }
-
-    let entities = await q.getMany();
 
     if (searchText) searchText = searchText.trim();
     if (searchText && searchText != "") {
@@ -377,7 +382,7 @@ async function eventByCode(req: Request<{ season: string; code: string }>, res: 
         return;
     }
 
-    let event = await Event.findOneBy({ season, code });
+    let event = await Event.findOne({ season, code });
 
     if (!event) {
         res.status(404).send(`No event in season ${season} with code ${code}.`);
@@ -403,30 +408,14 @@ async function eventMatches(req: Request<{ season: string; code: string }>, res:
         return;
     }
 
-    let event = await Event.findOneBy({ season, code });
+    let event = await Event.findOne({ season, code });
 
     if (!event) {
         res.status(404).send(`No event in season ${season} with code ${code}.`);
         return;
     }
 
-    let matches = await DATA_SOURCE.getRepository(Match)
-        .createQueryBuilder("m")
-        .where("m.event_season = :season", { season })
-        .andWhere("m.event_code = :code", { code })
-        .leftJoinAndMapMany(
-            "m.scores",
-            `match_score_${season}`,
-            "ms",
-            "m.event_season = ms.season AND m.event_code = ms.event_code AND m.id = ms.match_id"
-        )
-        .leftJoinAndMapMany(
-            "m.teams",
-            "team_match_participation",
-            "tmp",
-            "m.event_season = tmp.season AND m.event_code = tmp.event_code AND m.id = tmp.match_id"
-        )
-        .getMany();
+    let matches = await Match.find({ eventSeason: season, eventCode: code });
 
     for (let m of matches) {
         (m as any).scores = frontendMSFromDB(m.scores);
@@ -508,44 +497,33 @@ async function eventSearch(req: Request<{ season: string }>, res: Response) {
         return;
     }
 
-    let q = DATA_SOURCE.getRepository(Event)
-        .createQueryBuilder("e")
-        .distinctOn(["code"])
-        .addSelect("coalesce(m.has_been_played, false)", "has_matches")
-        .where("season = :season", { season });
+    let entities = await Event.find({ season });
 
     if (region && region != RegionOption.All) {
-        q.andWhere("region_code IN (:...regions)", { regions: getRegionCodes(region) });
+        let regionSet = new Set(getRegionCodes(region));
+        entities = entities.filter((event) => event.regionCode != null && regionSet.has(event.regionCode));
     }
 
     if (type && type != EventTypeOption.All) {
-        q.andWhere("type IN (:...types)", { types: getEventTypes(type) });
+        let typeSet = new Set(getEventTypes(type));
+        entities = entities.filter((event) => typeSet.has(event.type));
     }
 
     if (start) {
-        let s = new Date(start);
-        q.andWhere('"start" >= :start', { start: s.toISOString().split("T")[0] });
+        let startDate = new Date(start).toISOString().split("T")[0];
+        entities = entities.filter((event) => new Date(event.start).toISOString().split("T")[0] >= startDate);
     }
 
     if (end) {
-        let e = new Date(end);
-        q.andWhere('"end" <= :end', { end: e.toISOString().split("T")[0] });
-    }
-
-    if (limit && (!searchText || searchText.trim() == "")) {
-        q.limit(+limit);
-    }
-
-    let { entities, raw } = await q
-        .leftJoin(Match, "m", "e.season = m.event_season AND e.code = m.event_code")
-        .getRawAndEntities();
-
-    for (let i = 0; i < entities.length; i++) {
-        (entities[i] as any).hasMatches = raw[i].has_matches;
+        let endDate = new Date(end).toISOString().split("T")[0];
+        entities = entities.filter((event) => new Date(event.end).toISOString().split("T")[0] <= endDate);
     }
 
     if (hasMatches != null) {
-        entities = entities.filter((e) => (e as any).hasMatches == (hasMatches == "true"));
+        let eventCodesWithMatches = new Set(
+            (await Match.find({ eventSeason: season }).distinct("eventCode")) as string[]
+        );
+        entities = entities.filter((event) => eventCodesWithMatches.has(event.code) == (hasMatches == "true"));
     }
 
     if (searchText && searchText.trim() != "") {
@@ -557,6 +535,10 @@ async function eventSearch(req: Request<{ season: string }>, res: Response) {
             true
         );
         entities = res.map((d) => d.document);
+    }
+
+    if (limit && (!searchText || searchText.trim() == "")) {
+        entities = entities.slice(0, +limit);
     }
 
     res.send(entities);
@@ -571,7 +553,7 @@ async function eventPreview(req: Request<{ season: string; code: string }>, res:
         return;
     }
 
-    let event = await Event.findOneBy({ season, code });
+    let event = await Event.findOne({ season, code });
 
     if (!event) {
         res.status(404).send(`No event in season ${season} with code ${code}.`);
@@ -583,10 +565,10 @@ async function eventPreview(req: Request<{ season: string; code: string }>, res:
         return;
     }
 
-    let roster = await TeamEventParticipation[event.season].find({
-        where: { season: event.season, eventCode: event.code },
-        select: ["teamNumber"],
-    });
+    let roster = await TeamEventParticipation[event.season].find(
+        { season: event.season, eventCode: event.code },
+        { teamNumber: 1 }
+    );
     let teamNumbers = roster.map((r) => r.teamNumber);
     if (!teamNumbers.length) {
         res.status(404).send(`No teams found for event ${event.code} in season ${event.season}.`);
@@ -601,14 +583,12 @@ async function eventPreview(req: Request<{ season: string; code: string }>, res:
         return val == null ? null : +val;
     };
 
-    let candidateStats = await TeamEventParticipation[event.season]
-        .createQueryBuilder("t")
-        .innerJoin(Event, "e", "e.season = t.season AND e.code = t.eventCode")
-        .where("t.teamNumber IN (:...teamNumbers)", { teamNumbers })
-        .andWhere("NOT t.isRemote")
-        .andWhere("t.hasStats")
-        .andWhere("NOT e.modified_rules")
-        .getMany();
+    let candidateStats = await TeamEventParticipation[event.season].find({
+        teamNumber: { $in: teamNumbers },
+        isRemote: false,
+        hasStats: true,
+        season: event.season,
+    });
 
     let bestStats = new Map<
         number,
@@ -631,9 +611,9 @@ async function eventPreview(req: Request<{ season: string; code: string }>, res:
     }
 
     let eventCodes = new Set(candidateStats.map((r) => r.eventCode));
-    let events = await Event.findBy({
+    let events = await Event.find({
         season: event.season,
-        code: In([...eventCodes]),
+        code: { $in: [...eventCodes] },
     });
     let eventMap = new Map(events.map((e) => [e.code, e]));
 

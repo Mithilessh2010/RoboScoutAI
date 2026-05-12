@@ -19,10 +19,10 @@ import {
 } from "@ftc-scout/common";
 import { GraphQLFieldConfig, GraphQLObjectType, GraphQLOutputType } from "graphql";
 import { TeamEventParticipationGQL } from "../TeamEventParticipation";
-import { TeamEventParticipation } from "../../../db/entities/dyn/team-event-participation";
 import { GraphQLFieldConfig, GraphQLObjectType, GraphQLOutputType } from "graphql";
 import { TeamEventParticipationGQL } from "../TeamEventParticipation";
 import { TeamEventParticipation } from "../../../db/schemas/dyn/team-event-participation";
+import { Event } from "../../../db/schemas/Event";
 import {
     AllianceGQL,
     EventTypeOptionGQL,
@@ -34,6 +34,10 @@ import { FilterGQL, TyFilterGQL, filterGQLToSql, isFilteringOn } from "./filter-
 import { MatchScore } from "../../../db/schemas/dyn/match-score";
 import { MatchGQL, singleSeasonScoreAwareMatchLoader } from "../Match";
 import graphqlFields from "graphql-fields";
+
+function name(_ns: any, exp: string) {
+    return exp;
+}
 
 function RecordGqlTy(wrapped: GraphQLOutputType, namePrefix: string): GraphQLObjectType {
     let rowTy = new GraphQLObjectType({
@@ -122,158 +126,63 @@ export const RecordQueries: Record<string, GraphQLFieldConfig<any, any>> = {
 
             take = Math.min(take, 50);
 
-            let descriptor = DESCRIPTORS[season];
-            let statSet = getTepStatSet(season, false);
-            let ns = DATA_SOURCE.namingStrategy;
-
-            // Sort Field
-            let defaultRankerSqlName = descriptor.pensSubtract
+            const mongoEvents = await Event.find({ season });
+            const eventMap = new Map(mongoEvents.map((event) => [`${event.season}:${event.code}`, event]));
+            const mongoDescriptor = DESCRIPTORS[season];
+            const mongoDefaultRankerSqlName = mongoDescriptor.pensSubtract
                 ? "oprTotalPoints"
                 : "oprTotalPointsNp";
-            let rankerExp = statSet.getStat(sortBy ?? "")?.sqlExpr ?? defaultRankerSqlName;
-            let rankerSql = name(ns, rankerExp);
+            const mongoSortKey = sortBy ?? mongoDefaultRankerSqlName;
 
-            let defaultSortSql = name(ns, defaultRankerSqlName) + " DESC NULLS LAST";
+            let rows = await Tep.find({ season, hasStats: true });
 
-            // Sort Direction
-            let sortDirSql = sortDir ?? SortDir.Desc;
+            rows = rows.filter((row) => {
+                const event = eventMap.get(`${row.season}:${row.eventCode}`);
+                if (!event) return false;
+                if (event.modifiedRules) return false;
 
-            // Region
-            let chosenRegion = region ?? RegionOption.All;
+                if (region && region != RegionOption.All) {
+                    const regions = new Set(getRegionCodes(region));
+                    if (!event.regionCode || !regions.has(event.regionCode)) return false;
+                }
 
-            // Event Type
-            let chosenType = type ?? EventTypeOption.Competition;
+                if (type && type != EventTypeOption.All && type != EventTypeOption.Competition) {
+                    const types = new Set(getEventTypes(type));
+                    if (!types.has(event.type)) return false;
+                }
 
-            // Filter
-            let filterSql = filter ? filterGQLToSql(filter, statSet, (s) => name(ns, s)) : "true";
+                if (remote == RemoteOption.Trad && row.isRemote) return false;
+                if (remote == RemoteOption.Remote && !row.isRemote) return false;
 
-            let contextAddedQ = Tep.createQueryBuilder("tep")
-                .select("tep.event_code", "tep_ec")
-                .addSelect("tep.team_number", "tep_tn")
-                .addSelect(
-                    `ROW_NUMBER() OVER (PARTITION BY "team_number" ORDER BY ${rankerSql} ${sortDirSql} NULLS LAST, ${defaultSortSql})`,
-                    "ranking"
-                )
-                .addSelect(
-                    `ROW_NUMBER() OVER (PARTITION BY "team_number", ${filterSql} ORDER BY ${rankerSql} ${sortDirSql} NULLS LAST, ${defaultSortSql})`,
-                    "filter_ranking"
-                )
-                .addSelect(`${rankerSql}`, "ranker")
-                .addSelect(name(ns, defaultRankerSqlName))
-                .leftJoin("event", "e", "tep.season = e.season AND tep.event_code = e.code")
-                .andWhere("has_stats")
-                .andWhere("NOT e.modified_rules");
+                if (start && new Date(event.start).toISOString().split("T")[0] < start.toISOString().split("T")[0]) {
+                    return false;
+                }
 
-            let countQ = Tep.createQueryBuilder("tep")
-                .leftJoin("event", "e", "tep.season = e.season AND tep.event_code = e.code")
-                .where("has_stats")
-                .andWhere("NOT e.modified_rules");
+                if (end && new Date(event.end).toISOString().split("T")[0] > end.toISOString().split("T")[0]) {
+                    return false;
+                }
 
-            if (chosenRegion != RegionOption.All) {
-                contextAddedQ.andWhere("region_code IN (:...regions)", {
-                    regions: getRegionCodes(chosenRegion),
-                });
-                countQ.andWhere("region_code IN (:...regions)", {
-                    regions: getRegionCodes(chosenRegion),
-                });
-            }
+                return true;
+            });
 
-            if (chosenType != EventTypeOption.All && chosenType != EventTypeOption.Competition) {
-                contextAddedQ.andWhere("type IN (:...types)", {
-                    types: getEventTypes(chosenType),
-                });
-                countQ.andWhere("type IN (:...types)", {
-                    types: getEventTypes(chosenType),
-                });
-            }
+            rows.sort((a, b) => {
+                const av = Number((a as any)[mongoSortKey] ?? (a as any).opr?.totalPoints ?? (a as any).opr?.totalPointsNp ?? -Infinity);
+                const bv = Number((b as any)[mongoSortKey] ?? (b as any).opr?.totalPoints ?? (b as any).opr?.totalPointsNp ?? -Infinity);
+                return sortDir == SortDir.Asc ? av - bv : bv - av;
+            });
 
-            if (remote == RemoteOption.Trad) {
-                contextAddedQ.andWhere("NOT remote");
-                countQ.andWhere("NOT remote");
-            } else if (remote == RemoteOption.Remote) {
-                contextAddedQ.andWhere("remote");
-                countQ.andWhere("remote");
-            }
-
-            if (start) {
-                contextAddedQ.andWhere(`"start" >= :start`, {
-                    start: start.toISOString().split("T")[0],
-                });
-                countQ.andWhere(`"start" >= :start`, { start: start.toISOString().split("T")[0] });
-            }
-
-            if (end) {
-                contextAddedQ.andWhere(`"end" <= :end`, { end: end.toISOString().split("T")[0] });
-                countQ.andWhere(`"end" <= :end`, { end: end.toISOString().split("T")[0] });
-            }
-
-            contextAddedQ.addSelect(filterSql, "is_in");
-
-            let count = await countQ.andWhere(filterSql).getCount();
-
-            if (skip >= count) {
-                return { data: [], offset: skip, count };
-            }
-
-            let rankedQ = DATA_SOURCE.createQueryBuilder()
-                .from("context_added", "context_added")
-                .addSelect("*")
-                .addSelect(
-                    `RANK() over (order by ranking, ranker ${sortDirSql} NULLS LAST, ${defaultSortSql})`,
-                    "no_filter_skip_rank"
-                )
-                .addSelect(
-                    `RANK() over (partition by is_in order by filter_ranking, ranker ${sortDirSql} NULLS LAST, ${defaultSortSql})`,
-                    "filter_skip_rank"
-                )
-                .addSelect(
-                    `RANK() over (order by ranker ${sortDirSql} NULLS LAST, ${defaultSortSql})`,
-                    "no_filter_rank"
-                )
-                .addSelect(
-                    `RANK() over (partition by is_in order by ranker ${sortDirSql} NULLS LAST, ${defaultSortSql})`,
-                    "filter_rank"
-                )
-                .orderBy("ranker", sortDir == SortDir.Asc ? "ASC" : "DESC", "NULLS LAST")
-                .addOrderBy(name(ns, defaultRankerSqlName), "DESC", "NULLS LAST");
-
-            let finalQ = await DATA_SOURCE.createQueryBuilder()
-                .addCommonTableExpression(contextAddedQ, "context_added")
-                .addCommonTableExpression(rankedQ, "ranked")
-                .from("ranked", "ranked")
-                .addSelect("filter_rank")
-                .addSelect("no_filter_rank")
-                .addSelect(
-                    "CASE WHEN filter_ranking = 1 THEN filter_skip_rank END",
-                    "filter_skip_rank"
-                )
-                .addSelect(
-                    "CASE WHEN ranking = 1 THEN no_filter_skip_rank END",
-                    "no_filter_skip_rank"
-                )
-                .addSelect("tep_ec")
-                .addSelect("tep_tn")
-                .where("is_in")
-                .limit(take)
-                .offset(skip)
-                .getRawMany();
-
-            let where = finalQ.map((r) => ({
-                season,
-                eventCode: r.tep_ec,
-                teamNumber: r.tep_tn,
-            }));
-            let entities = await Tep.find({ where });
-
-            let data = finalQ.map((r) => ({
-                data: entities.find((e) => e.eventCode == r.tep_ec && e.teamNumber == r.tep_tn)!,
-                noFilterRank: +r.no_filter_rank,
-                filterRank: +r.filter_rank,
-                noFilterSkipRank: +r.no_filter_skip_rank,
-                filterSkipRank: +r.filter_skip_rank,
-            }));
-
-            return { data, offset: skip, count };
+            const sliced = rows.slice(skip, skip + take);
+            return {
+                data: sliced.map((row, index) => ({
+                    data: row,
+                    noFilterRank: skip + index + 1,
+                    filterRank: skip + index + 1,
+                    noFilterSkipRank: skip + index + 1,
+                    filterSkipRank: skip + index + 1,
+                })),
+                offset: skip,
+                count: rows.length,
+            };
         },
     },
     matchRecords: {
@@ -326,229 +235,68 @@ export const RecordQueries: Record<string, GraphQLFieldConfig<any, any>> = {
 
             take = Math.min(take, 50);
 
-            let descriptor = DESCRIPTORS[season];
-            let statSet = getMatchStatSet(season, false);
-            let ns = DATA_SOURCE.namingStrategy;
+            const mongoEvents = await Event.find({ season });
+            const eventMap = new Map(mongoEvents.map((event) => [`${event.season}:${event.code}`, event]));
+            const mongoDescriptor = DESCRIPTORS[season];
+            const mongoDefaultRankerSqlName = mongoDescriptor.pensSubtract ? "totalPoints" : "totalPointsNp";
+            const mongoSortKey = sortBy ?? mongoDefaultRankerSqlName;
 
-            // Sort Field
-            let defaultRankerSqlName = descriptor.pensSubtract ? "totalPoints" : "totalPointsNp";
-            let rankerExp = statSet.getStat(sortBy ?? "")?.sqlExpr ?? defaultRankerSqlName;
-            let rankerSql = name(ns, rankerExp);
+            const matchDocs = await Match.find({ eventSeason: season });
+            const rows: Array<{ match: any; alliance: any; score: number }> = [];
 
-            let defaultSortSql = name(ns, defaultRankerSqlName) + " DESC NULLS LAST";
+            for (const match of matchDocs) {
+                const event = eventMap.get(`${match.eventSeason}:${match.eventCode}`);
+                if (!event || event.modifiedRules) continue;
 
-            // Sort Direction
-            let sortDirSql = sortDir ?? SortDir.Desc;
+                if (region && region != RegionOption.All) {
+                    const regions = new Set(getRegionCodes(region));
+                    if (!event.regionCode || !regions.has(event.regionCode)) continue;
+                }
 
-            // Region
-            let chosenRegion = region ?? RegionOption.All;
+                if (type && type != EventTypeOption.All && type != EventTypeOption.Competition) {
+                    const types = new Set(getEventTypes(type));
+                    if (!types.has(event.type)) continue;
+                }
 
-            // Event Type
-            let chosenType = type ?? EventTypeOption.Competition;
+                if (remote == RemoteOption.Trad && event.remote) continue;
+                if (remote == RemoteOption.Remote && !event.remote) continue;
 
-            // Filter
-            let filterSql = filter ? filterGQLToSql(filter, statSet, (s) => name(ns, s)) : "true";
+                if (start && new Date(event.start).toISOString().split("T")[0] < start.toISOString().split("T")[0]) continue;
+                if (end && new Date(event.end).toISOString().split("T")[0] > end.toISOString().split("T")[0]) continue;
 
-            let joinOurTeams =
-                isFilteringOn(filter, (id) => id == "team1This") ||
-                isFilteringOn(filter, (id) => id == "team2This") ||
-                sortBy == "team1This" ||
-                sortBy == "team2This";
-
-            let joinOtherTeams =
-                isFilteringOn(filter, (id) => id == "team1Opp") ||
-                isFilteringOn(filter, (id) => id == "team2Opp") ||
-                sortBy == "team1Opp" ||
-                sortBy == "team2Opp";
-
-            let joinOtherScore =
-                isFilteringOn(filter, (id) => id.endsWith("Opp")) || sortBy?.endsWith("Opp");
-
-            let contextAddedQ = Ms.createQueryBuilder("ms")
-                .select("ms.event_code", "ms_ec")
-                .addSelect("ms.match_id", "ms_id")
-                .addSelect("ms.alliance", "ms_al")
-                .addSelect(`${rankerSql}`, "ranker")
-                .addSelect("ms." + defaultRankerSqlName, name(ns, defaultRankerSqlName))
-                .leftJoin("event", "e", "ms.season = e.season AND ms.event_code = e.code")
-                .where("NOT e.modified_rules");
-
-            let countQ = Ms.createQueryBuilder("ms")
-                .leftJoin("event", "e", "ms.season = e.season AND ms.event_code = e.code")
-                .where("NOT e.modified_rules");
-
-            if (joinOurTeams) {
-                contextAddedQ.leftJoin(
-                    "team_match_participation",
-                    "tmp1",
-                    `ms.season = tmp1.season AND ms.event_code = tmp1.event_code AND ms.match_id = 
-                    tmp1.match_id AND ms.alliance = tmp1.alliance AND (tmp1.station = 'Solo' OR 
-                    tmp1.station = 'One')`
-                );
-                countQ.leftJoin(
-                    "team_match_participation",
-                    "tmp1",
-                    `ms.season = tmp1.season AND ms.event_code = tmp1.event_code AND ms.match_id = 
-                    tmp1.match_id AND ms.alliance = tmp1.alliance AND (tmp1.station = 'Solo' OR 
-                    tmp1.station = 'One')`
-                );
-                contextAddedQ.leftJoin(
-                    "team_match_participation",
-                    "tmp2",
-                    `ms.season = tmp2.season AND ms.event_code = tmp2.event_code AND ms.match_id = 
-                    tmp2.match_id AND ms.alliance = tmp2.alliance AND tmp2.station = 'Two'`
-                );
-                countQ.leftJoin(
-                    "team_match_participation",
-                    "tmp2",
-                    `ms.season = tmp2.season AND ms.event_code = tmp2.event_code AND ms.match_id = 
-                    tmp2.match_id AND ms.alliance = tmp2.alliance AND tmp2.station = 'Two'`
-                );
-            }
-
-            if (joinOtherTeams) {
-                contextAddedQ.leftJoin(
-                    "team_match_participation",
-                    "tmp1Opp",
-                    `ms.season = tmp1Opp.season AND ms.event_code = tmp1Opp.event_code AND ms.match_id = 
-                    tmp1Opp.match_id AND ms.alliance <> tmp1Opp.alliance AND tmp1Opp.station = 'One'`
-                );
-                countQ.leftJoin(
-                    "team_match_participation",
-                    "tmp1Opp",
-                    `ms.season = tmp1Opp.season AND ms.event_code = tmp1Opp.event_code AND ms.match_id = 
-                    tmp1Opp.match_id AND ms.alliance <> tmp1Opp.alliance AND tmp1Opp.station = 'One'`
-                );
-                contextAddedQ.leftJoin(
-                    "team_match_participation",
-                    "tmp2Opp",
-                    `ms.season = tmp2Opp.season AND ms.event_code = tmp2Opp.event_code AND ms.match_id = 
-                    tmp2Opp.match_id AND ms.alliance <> tmp2Opp.alliance AND tmp2Opp.station = 'Two'`
-                );
-                countQ.leftJoin(
-                    "team_match_participation",
-                    "tmp2Opp",
-                    `ms.season = tmp2Opp.season AND ms.event_code = tmp2Opp.event_code AND ms.match_id = 
-                    tmp2Opp.match_id AND ms.alliance <> tmp2Opp.alliance AND tmp2Opp.station = 'Two'`
-                );
-            }
-
-            if (joinOtherScore) {
-                contextAddedQ.leftJoin(
-                    `match_score_${season}`,
-                    "msOpp",
-                    `ms.season = msOpp.season AND ms.event_code = msOpp.eventCode AND ms.match_id = 
-                    msOpp.matchId AND ms.alliance <> msOpp.alliance`
-                );
-                countQ.leftJoin(
-                    `match_score_${season}`,
-                    "msOpp",
-                    `ms.season = msOpp.season AND ms.event_code = msOpp.eventCode AND ms.match_id = 
-                    msOpp.matchId AND ms.alliance <> msOpp.alliance`
-                );
-            }
-
-            if (chosenRegion != RegionOption.All) {
-                contextAddedQ.andWhere("region_code IN (:...regions)", {
-                    regions: getRegionCodes(chosenRegion),
+                const scores = await MatchScore[season].find({
+                    season,
+                    eventCode: match.eventCode,
+                    matchId: match.id,
                 });
-                countQ.andWhere("region_code IN (:...regions)", {
-                    regions: getRegionCodes(chosenRegion),
-                });
+
+                const matchScore = frontendMSFromDB(scores as any[]);
+                if (!matchScore) continue;
+
+                const scoreValue = Number((matchScore as any)[mongoSortKey] ?? (matchScore as any).totalPoints ?? (matchScore as any).totalPointsNp ?? -Infinity);
+
+                if ((matchScore as any).red) {
+                    rows.push({ match, alliance: (matchScore as any).red.alliance, score: scoreValue });
+                    rows.push({ match, alliance: (matchScore as any).blue.alliance, score: scoreValue });
+                } else {
+                    rows.push({ match, alliance: (matchScore as any).alliance, score: scoreValue });
+                }
             }
 
-            if (chosenType != EventTypeOption.All && chosenType != EventTypeOption.Competition) {
-                contextAddedQ.andWhere("type IN (:...types)", {
-                    types: getEventTypes(chosenType),
-                });
-                countQ.andWhere("type IN (:...types)", {
-                    types: getEventTypes(chosenType),
-                });
-            }
+            rows.sort((a, b) => (sortDir == SortDir.Asc ? a.score - b.score : b.score - a.score));
 
-            if (remote == RemoteOption.Trad) {
-                contextAddedQ.andWhere("NOT remote");
-                countQ.andWhere("NOT remote");
-            } else if (remote == RemoteOption.Remote) {
-                contextAddedQ.andWhere("remote");
-                countQ.andWhere("remote");
-            }
-
-            if (start) {
-                contextAddedQ.andWhere(`"start" >= :start`, {
-                    start: start.toISOString().split("T")[0],
-                });
-                countQ.andWhere(`"start" >= :start`, { start: start.toISOString().split("T")[0] });
-            }
-
-            if (end) {
-                contextAddedQ.andWhere(`"end" <= :end`, { end: end.toISOString().split("T")[0] });
-                countQ.andWhere(`"end" <= :end`, { end: end.toISOString().split("T")[0] });
-            }
-
-            contextAddedQ.addSelect(filterSql, "is_in");
-
-            let count = await countQ.andWhere(filterSql).getCount();
-
-            if (skip >= count) {
-                return { data: [], offset: skip, count };
-            }
-
-            let rankedQ = DATA_SOURCE.createQueryBuilder()
-                .from("context_added", "context_added")
-                .addSelect("*")
-                .addSelect(
-                    `RANK() over (order by ranker ${sortDirSql} NULLS LAST, ${defaultSortSql})`,
-                    "no_filter_rank"
-                )
-                .addSelect(
-                    `RANK() over (partition by is_in order by ranker ${sortDirSql} NULLS LAST, ${defaultSortSql})`,
-                    "filter_rank"
-                )
-                .orderBy("ranker", sortDir == SortDir.Asc ? "ASC" : "DESC", "NULLS LAST")
-                .addOrderBy(name(ns, defaultRankerSqlName), "DESC", "NULLS LAST");
-
-            let finalQ = await DATA_SOURCE.createQueryBuilder()
-                .addCommonTableExpression(contextAddedQ, "context_added")
-                .addCommonTableExpression(rankedQ, "ranked")
-                .from("ranked", "ranked")
-                .addSelect("filter_rank")
-                .addSelect("no_filter_rank")
-                .addSelect("filter_rank", "filter_skip_rank")
-                .addSelect("no_filter_rank", "no_filter_skip_rank")
-                .addSelect("ms_ec")
-                .addSelect("ms_id")
-                .addSelect("ms_al")
-                .where("is_in")
-                .limit(take)
-                .offset(skip)
-                .getRawMany();
-
-            let where = finalQ.map((r) => ({
-                eventSeason: season,
-                eventCode: r.ms_ec,
-                id: r.ms_id,
-            }));
-            let fields = graphqlFields(info)?.data?.data?.match;
-            let entities = await singleSeasonScoreAwareMatchLoader(
-                where,
-                [],
-                fields && "scores" in fields,
-                fields && "teams" in fields
-            );
-
-            let data = finalQ.map((r) => ({
-                data: {
-                    match: entities.find((e) => e.eventCode == r.ms_ec && e.id == r.ms_id)!,
-                    alliance: r.ms_al,
-                },
-                noFilterRank: +r.no_filter_rank,
-                filterRank: +r.filter_rank,
-                noFilterSkipRank: +r.no_filter_skip_rank,
-                filterSkipRank: +r.filter_skip_rank,
-            }));
-
-            return { data, offset: skip, count };
+            const sliced = rows.slice(skip, skip + take);
+            return {
+                data: sliced.map((row, index) => ({
+                    data: { match: row.match, alliance: row.alliance },
+                    noFilterRank: skip + index + 1,
+                    filterRank: skip + index + 1,
+                    noFilterSkipRank: skip + index + 1,
+                    filterSkipRank: skip + index + 1,
+                })),
+                offset: skip,
+                count: rows.length,
+            };
         },
     },
 };

@@ -1,6 +1,6 @@
 import { throttled } from "@ftc-scout/common";
 import { CACHE_REQ, FTC_API_KEY } from "../constants";
-import { FtcApiReq } from "../db/entities/FtcApiReq";
+import { FtcApiReq } from "../db/schemas/FtcApiReq";
 
 async function makeRequest(url: string): Promise<any | null> {
     console.info(`Making a request to ${url}`);
@@ -30,7 +30,7 @@ export async function getFromFtcApi(path: string, params: Record<string, any> = 
     let url = `https://ftc-api.firstinspires.org/v2.0/${path}?${paramsString}`;
 
     if (CACHE_REQ) {
-        let req = await FtcApiReq.findOneBy({ url });
+        let req = await FtcApiReq.findOne({ url });
         if (req) {
             console.info(`Using cached resp for ${url}`);
             return req.resp;
@@ -40,7 +40,7 @@ export async function getFromFtcApi(path: string, params: Record<string, any> = 
     let resp = await throttledMakeRequest(url);
 
     if (CACHE_REQ && !!resp) {
-        await FtcApiReq.create({ url, resp }).save();
+        await FtcApiReq.create({ url, resp });
     }
 
     return resp;

@@ -151,7 +151,7 @@ export const EventGQL: GraphQLObjectType = new GraphQLObjectType({
                 async (keys) => {
                     let groups = groupBy(keys, (k) => k.season);
                     let qs = Object.entries(groups).map(([season, k]) =>
-                        TeamEventParticipation[+season as Season].find({ where: k })
+                        TeamEventParticipation[+season as Season].find({ $or: k })
                     );
                     return (await Promise.all(qs)).flat();
                 }
@@ -170,7 +170,7 @@ export const EventGQL: GraphQLObjectType = new GraphQLObjectType({
                     teamNumber != null
                         ? { season: e.season, eventCode: e.code, teamNumber }
                         : { season: e.season, eventCode: e.code },
-                (keys) => TeamMatchParticipation.find({ where: keys })
+                (keys) => TeamMatchParticipation.find({ $or: keys })
             ),
         },
         hasMatches: {
@@ -180,20 +180,7 @@ export const EventGQL: GraphQLObjectType = new GraphQLObjectType({
             ) =>
                 "hasMatches" in e
                     ? e.hasMatches
-                    : (
-                          await DATA_SOURCE.getRepository(Event)
-                              .createQueryBuilder("e")
-                              .distinctOn(["code"])
-                              .addSelect("coalesce(m.has_been_played, false)", "has_matches")
-                              .leftJoin(
-                                  Match,
-                                  "m",
-                                  "e.season = m.event_season AND e.code = m.event_code"
-                              )
-                              .where("season = :season", { season: e.season })
-                              .andWhere("code = :code", { code: e.code })
-                              .getRawOne()
-                      ).has_matches,
+                    : (await Match.countDocuments({ eventSeason: e.season, eventCode: e.code })) > 0,
         },
         matches: {
             type: list(nn(MatchGQL)),
@@ -219,7 +206,7 @@ export const EventGQL: GraphQLObjectType = new GraphQLObjectType({
 
                 let roster = await TeamEventParticipation[event.season].find(
                     { season: event.season, eventCode: event.code },
-                    { select: ["teamNumber"] }
+                    { teamNumber: 1 }
                 );
                 let teamNumbers = roster.map((r) => r.teamNumber);
                 if (!teamNumbers.length) return [];

@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
-import { WatchRoom as WatchRoomEntity } from "../db/entities/WatchRoom";
-import { WatchRoomMessage as WatchRoomMessageEntity } from "../db/entities/WatchRoomMessage";
+import { WatchRoom as WatchRoomEntity } from "../db/schemas/WatchRoom";
+import { WatchRoomMessage as WatchRoomMessageEntity } from "../db/schemas/WatchRoomMessage";
 import type {
     CreateWatchRoomInput,
     WatchControlMode,
@@ -78,12 +78,12 @@ function normalizeRoom(room: WatchRoomEntity): WatchRoom {
 }
 
 export async function listWatchRooms(): Promise<WatchRoomSummary[]> {
-    let rooms = await WatchRoomEntity.find({ order: { updatedAt: "DESC" } });
+    let rooms = await WatchRoomEntity.find().sort({ updatedAt: -1 });
     return rooms.map((room) => normalizeRoom(room));
 }
 
 export async function getWatchRoom(roomId: string): Promise<WatchRoom | null> {
-    let room = await WatchRoomEntity.findOneBy({ id: roomId });
+    let room = await WatchRoomEntity.findOne({ id: roomId });
     return room ? normalizeRoom(room) : null;
 }
 
@@ -146,8 +146,8 @@ export async function mutateWatchRoom(roomId: string, updater: (room: WatchRoom)
 }
 
 export async function deleteWatchRoom(roomId: string): Promise<void> {
-    await WatchRoomEntity.delete({ id: roomId });
-    await WatchRoomMessageEntity.delete({ roomId });
+    await WatchRoomEntity.deleteOne({ id: roomId });
+    await WatchRoomMessageEntity.deleteMany({ roomId });
 }
 
 export async function addWatchRoomMessage(roomId: string, senderParticipantId: string, senderName: string, message: string): Promise<WatchRoomMessage> {
@@ -171,11 +171,7 @@ export async function addWatchRoomMessage(roomId: string, senderParticipantId: s
 }
 
 export async function listWatchRoomMessages(roomId: string, limit = 50): Promise<WatchRoomMessage[]> {
-    let records = await WatchRoomMessageEntity.find({
-        where: { roomId },
-        order: { createdAt: "ASC" },
-        take: limit,
-    });
+    let records = await WatchRoomMessageEntity.find({ roomId }).sort({ createdAt: 1 }).limit(limit);
 
     return records.map((record) => ({
         id: record.id,
