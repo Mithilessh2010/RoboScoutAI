@@ -147,6 +147,36 @@ FTC_EVENTS_API_BASE_URL
 
 If the deployed site shows an internal error, first check that `PUBLIC_SERVER_ORIGIN` is not set to `localhost:4000` in Vercel.
 
+### One-command Vercel deploy (recommended)
+
+You can deploy and upload secrets to Vercel from your machine using the Vercel CLI and the included helper script `deploy-vercel.sh`.
+
+1. Install and login to Vercel CLI:
+
+```bash
+npm i -g vercel
+vercel login
+```
+
+2. Export the required production secrets in your shell (examples):
+
+```bash
+export MONGODB_URL="mongodb+srv://user:pass@cluster.mongodb.net/ftcscout?retryWrites=true&w=majority"
+export FTC_API_KEY="BASE64_USERNAME_COLON_AUTHKEY"
+export FTC_EVENTS_USERNAME="your_ftc_username"
+export FTC_EVENTS_AUTH_KEY="your_ftc_auth_key"
+```
+
+3. Run the deploy script (uploads secrets and triggers a production deploy):
+
+```bash
+./deploy-vercel.sh
+```
+
+Notes:
+- The script will skip any secret that is not present in your shell and will warn you.
+- You can also add secrets manually in the Vercel dashboard or with `vercel env add`.
+
 ## Watch Room
 
 Watch Room lets teams create a shared stream wall for FTC events.
