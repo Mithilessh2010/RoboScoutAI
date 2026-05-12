@@ -2,10 +2,10 @@
     "buildCommand": "npm install && npm run build",
     "installCommand": "npm install",
     "env": {
-        "DATABASE_URL": "@mongodb_url",
-        "FTC_API_KEY": "@ftc_api_key",
-        "FTC_EVENTS_USERNAME": "@ftc_events_username",
-        "FTC_EVENTS_AUTH_KEY": "@ftc_events_auth_key",
+        "DATABASE_URL": "mongodb+srv://ftcscout:roboscout@roboscout.z2u1tyy.mongodb.net/?appName=roboscout",
+        "FTC_API_KEY": "c3VwZXJpb3JjYXZlOkI0RUEwMDZGLURERDAtNEJFRC1CNjM2LTY3NTYwRTAyMEZEMQ==",
+        "FTC_EVENTS_USERNAME": "superiorcave",
+        "FTC_EVENTS_AUTH_KEY": "B4EA006F-DDD0-4BED-B636-67560E020FD1",
         "PUBLIC_SERVER_ORIGIN": "api.ftcscout.org",
         "PUBLIC_FRONTEND_CODE": "production-frontend-code",
         "FTC_EVENTS_API_BASE_URL": "https://ftc-api.firstinspires.org/v2.0"
