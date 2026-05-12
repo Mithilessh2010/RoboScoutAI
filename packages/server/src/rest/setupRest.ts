@@ -17,9 +17,7 @@ import { TeamMatchParticipation } from "../db/entities/TeamMatchParticipation";
 import { Event } from "../db/entities/Event";
 import { DateTime } from "luxon";
 import { Match } from "../db/entities/Match";
-import { DATA_SOURCE } from "../db/data-source";
 import { frontendMSFromDB } from "../graphql/dyn/match-score";
-import { FindOptionsWhere, In } from "typeorm";
 import { getQuickStats } from "../graphql/resolvers/Team";
 import { addTypename } from "../graphql/dyn/tep";
 import {

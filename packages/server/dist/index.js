@@ -37,7 +37,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 process.setMaxListeners(0);
 require("dotenv/config");
-const data_source_1 = require("./db/data-source");
 const init_1 = require("./db/entities/dyn/init");
 const express_1 = __importStar(require("express"));
 const cors_1 = __importDefault(require("cors"));
@@ -62,7 +61,7 @@ const utils_keyvaluecache_1 = require("@apollo/utils.keyvaluecache");
 const response_cache_plugin_1 = require("./graphql/plugins/response-cache-plugin");
 function main() {
     return __awaiter(this, void 0, void 0, function* () {
-        yield data_source_1.DATA_SOURCE.initialize();
+        yield DATA_SOURCE.initialize();
         (0, init_1.initDynamicEntities)();
         let app = (0, express_1.default)();
         app.use((0, cors_1.default)({
@@ -90,7 +89,9 @@ function main() {
                     footer: false,
                     embed: { runTelemetry: false, endpointIsEditable: false },
                 }),
-                (0, response_cache_plugin_1.responseCachePlugin)(serverCache),
+                ...(constants_1.RESPONSE_CACHE_SECONDS > 0
+                    ? [(0, response_cache_plugin_1.responseCachePlugin)(serverCache, constants_1.RESPONSE_CACHE_SECONDS)]
+                    : []),
                 (0, drainHttpServer_1.ApolloServerPluginDrainHttpServer)({ httpServer }),
                 {
                     serverWillStart() {

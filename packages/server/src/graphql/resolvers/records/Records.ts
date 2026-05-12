@@ -20,8 +20,9 @@ import {
 import { GraphQLFieldConfig, GraphQLObjectType, GraphQLOutputType } from "graphql";
 import { TeamEventParticipationGQL } from "../TeamEventParticipation";
 import { TeamEventParticipation } from "../../../db/entities/dyn/team-event-participation";
-import { DATA_SOURCE } from "../../../db/data-source";
-import { NamingStrategyInterface } from "typeorm";
+import { GraphQLFieldConfig, GraphQLObjectType, GraphQLOutputType } from "graphql";
+import { TeamEventParticipationGQL } from "../TeamEventParticipation";
+import { TeamEventParticipation } from "../../../db/schemas/dyn/team-event-participation";
 import {
     AllianceGQL,
     EventTypeOptionGQL,
@@ -30,7 +31,7 @@ import {
     SortDirGQL,
 } from "../enums";
 import { FilterGQL, TyFilterGQL, filterGQLToSql, isFilteringOn } from "./filter-gql";
-import { MatchScore } from "../../../db/entities/dyn/match-score";
+import { MatchScore } from "../../../db/schemas/dyn/match-score";
 import { MatchGQL, singleSeasonScoreAwareMatchLoader } from "../Match";
 import graphqlFields from "graphql-fields";
 
@@ -67,8 +68,9 @@ const SpecificAlliance = new GraphQLObjectType({
 const TepRecordsGql = wr(nn(RecordGqlTy(TeamEventParticipationGQL, "Tep")));
 const MatchRecordsGql = wr(nn(RecordGqlTy(SpecificAlliance, "Match")));
 
-function name(ns: NamingStrategyInterface, exp: string): string {
-    return exp.match(/^\w+$/) ? ns.columnName(exp, undefined, []) : exp;
+function fieldName(exp: string): string {
+    // Convert camelCase to camelCase (Mongoose uses camelCase by default)
+    return exp;
 }
 
 export const RecordQueries: Record<string, GraphQLFieldConfig<any, any>> = {

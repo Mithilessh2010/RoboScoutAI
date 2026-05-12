@@ -1,16 +1,19 @@
 import { IntTy, nn } from "@ftc-scout/common";
 import { GraphQLFieldConfig, GraphQLObjectType } from "graphql";
 import { TeamGQL } from "./Team";
-import { Team } from "../../db/entities/Team";
-import { BestName } from "../../db/entities/BestName";
-import { DATA_SOURCE } from "../../db/data-source";
-import { LessThan } from "typeorm";
+import { Team } from "../../db/schemas/Team";
+import { BestName } from "../../db/schemas/BestName";
+import { IntTy, nn } from "@ftc-scout/common";
+import { GraphQLFieldConfig, GraphQLObjectType } from "graphql";
+import { TeamGQL } from "./Team";
+import { Team } from "../../db/schemas/Team";
+import { BestName } from "../../db/schemas/BestName";
 
 async function deleteOld() {
     try {
-        await BestName.delete({
+        await BestName.deleteMany({
             vote: -1,
-            createdAt: LessThan(new Date(Date.now() - 1000 * 60 * 60 * 24)),
+            createdAt: { $lt: new Date(Date.now() - 1000 * 60 * 60 * 24) },
         });
     } catch (e) {
         console.error("Failed to delete old BestName entries.");
@@ -40,7 +43,11 @@ export const BestNameQueries: Record<string, GraphQLFieldConfig<any, any>> = {
     getBestName: {
         type: BestNameGQL,
         resolve: async () => {
-            let teams = await Team.createQueryBuilder("t").orderBy("RANDOM()").take(2).getMany();
+            let teams = await Team.find({}).limit(2);
+            // Shuffle using a random aggregation stage
+            let teamCount = await Team.countDocuments({});
+            let randomIndices = [Math.floor(Math.random() * teamCount), Math.floor(Math.random() * teamCount)];
+            teams = await Team.find({}).skip(randomIndices[0]).limit(1).concat(await Team.find({}).skip(randomIndices[1]).limit(1));
             let bestName = BestName.create({
                 team1: teams[0].number,
                 team2: teams[1].number,
@@ -63,22 +70,26 @@ export const BestNameMutations: Record<string, GraphQLFieldConfig<any, any>> = {
             vote: IntTy,
         },
         resolve: async (_, { id, vote }: { id: number; vote: number }) => {
-            await DATA_SOURCE.createQueryBuilder()
-                .update(BestName)
-                .set({ vote })
-                .where("id = :id AND (team1 = :vote OR team2 = :vote)", { id, vote })
-                .execute();
+            await BestName.updateOne(
+                { id, $or: [{ team1: vote }, { team2: vote }] },
+                { $set: { vote } }
+            );
 
-            let teams = await Team.createQueryBuilder("t").orderBy("RANDOM()").take(2).getMany();
+            let teamCount = await Team.countDocuments({});
+            let randomIndices = [Math.floor(Math.random() * teamCount), Math.floor(Math.random() * teamCount)];
+            let teams = await Promise.all([
+                Team.find({}).skip(randomIndices[0]).limit(1),
+                Team.find({}).skip(randomIndices[1]).limit(1)
+            ]);
             let bestName = BestName.create({
-                team1: teams[0].number,
-                team2: teams[1].number,
+                team1: teams[0][0].number,
+                team2: teams[1][0].number,
             });
             await bestName.save();
             return {
                 id: bestName.id,
-                team1D: teams[0],
-                team2D: teams[1],
+                team1D: teams[0][0],
+                team2D: teams[1][0],
             };
         },
     },

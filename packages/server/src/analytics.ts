@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import { Analytics } from "./db/entities/Analytics";
+import { Analytics } from "./db/schemas/Analytics";
+import { connectDB } from "./db/mongodb";
 import UAParser from "ua-parser-js";
 import md5 from "md5";
 
@@ -39,15 +40,19 @@ export function handleAnalytics(req: Request, res: Response) {
         let ip = req.get("x-forwarded-for") ?? req.socket.remoteAddress;
         let userId = md5("ftcscout" + uaString + ip);
 
-        Analytics.create({
-            url,
-            fromUrl,
-            pathChanged,
-            sessionId,
-            userId,
-            browser,
-            deviceType,
-            date: new Date(time),
-        }).save();
-    } catch (e) {}
+        connectDB().then(() => {
+            Analytics.create({
+                url,
+                fromUrl,
+                pathChanged,
+                sessionId,
+                userId,
+                browser,
+                deviceType,
+                date: new Date(time),
+            }).catch((e) => console.error("Analytics save error:", e));
+        });
+    } catch (e) {
+        console.error("Analytics parse error:", e);
+    }
 }

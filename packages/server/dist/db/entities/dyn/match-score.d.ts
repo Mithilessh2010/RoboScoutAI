@@ -1,5 +1,4 @@
 import { Alliance, MatchScoresFtcApi, Season } from "@ftc-scout/common";
-import { EntitySchema, Repository } from "typeorm";
 import { Match } from "../Match";
 import { AnyObject } from "../../../type-utils";
 type BaseColumns = {

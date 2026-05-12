@@ -1,14 +1,12 @@
 import { GraphQLObjectType, GraphQLResolveInfo } from "graphql";
-import { dataLoaderResolverSingle, keyListToWhereClause } from "../utils";
+import { dataLoaderResolverSingle } from "../utils";
 import { AwardTypeGQL } from "./enums";
 import { TeamGQL } from "./Team";
-import { Award } from "../../db/entities/Award";
-import { FindOptionsWhere } from "typeorm";
+import { Award } from "../../db/schemas/Award";
 import { EventGQL } from "./Event";
-import { Event } from "../../db/entities/Event";
+import { Event } from "../../db/schemas/Event";
 import { DateTimeTy, IntTy, Season, StrTy, nn, nullTy } from "@ftc-scout/common";
 import graphqlFields from "graphql-fields";
-import { DATA_SOURCE } from "../../db/data-source";
 
 export const AwardGQL: GraphQLObjectType = new GraphQLObjectType({
     name: "Award",
@@ -30,25 +28,30 @@ export const AwardGQL: GraphQLObjectType = new GraphQLObjectType({
             type: nn(EventGQL),
             resolve: dataLoaderResolverSingle<Award, Event, { season: Season; code: string }>(
                 (a) => ({ season: a.season, code: a.eventCode }),
-                (keys) => Event.find({ where: keys })
+                (keys) => Event.find(keys)
             ),
         },
     }),
 });
 
-export function teamAwareAwardLoader<K extends FindOptionsWhere<Award>>(
-    keys: K[],
-    info: GraphQLResolveInfo[]
-) {
+export async function teamAwareAwardLoader(keys: any[], info: GraphQLResolveInfo[]) {
     let includeTeam = info.some((i) => "team" in graphqlFields(i));
 
-    let q = DATA_SOURCE.getRepository(Award)
-        .createQueryBuilder("a")
-        .where(keyListToWhereClause("a", keys));
-
-    if (includeTeam) {
-        q.leftJoinAndMapOne("a.team", "team", "t", "a.team_number = t.number");
+    // Build query from keys
+    let awards: any[] = [];
+    for (let key of keys) {
+        let award = await Award.findOne(key);
+        if (award) awards.push(award);
     }
 
-    return q.getMany();
+    // If includeTeam is needed, populate the team data
+    if (includeTeam) {
+        const { Team } = await import("../../db/schemas/Team");
+        for (let award of awards) {
+            const team = await Team.findOne({ number: award.teamNumber });
+            (award as any).team = team;
+        }
+    }
+
+    return awards;
 }

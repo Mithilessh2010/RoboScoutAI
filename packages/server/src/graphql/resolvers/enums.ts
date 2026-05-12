@@ -12,7 +12,7 @@ import {
     TournamentLevel,
     makeGQLEnum,
 } from "@ftc-scout/common";
-import { AwardType } from "../../db/entities/Award";
+import { AwardType } from "../../db/schemas/Award";
 
 export const AllianceGQL = makeGQLEnum(Alliance, "Alliance");
 export const StationGQL = makeGQLEnum(Station, "Station");

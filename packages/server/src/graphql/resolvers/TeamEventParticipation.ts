@@ -1,14 +1,13 @@
 import { IntTy, Season, StrTy, list, nn } from "@ftc-scout/common";
 import { GraphQLObjectType } from "graphql";
 import { dataLoaderResolverList, dataLoaderResolverSingle } from "../utils";
-import { TeamEventParticipation } from "../../db/entities/dyn/team-event-participation";
-import { Event } from "../../db/entities/Event";
+import { TeamEventParticipation } from "../../db/schemas/dyn/team-event-participation";
+import { Event } from "../../db/schemas/Event";
 import { TeamGQL } from "./Team";
-import { Team } from "../../db/entities/Team";
-import { In } from "typeorm";
+import { Team } from "../../db/schemas/Team";
 import { AwardGQL, teamAwareAwardLoader } from "./Award";
-import { Award } from "../../db/entities/Award";
-import { TeamMatchParticipation } from "../../db/entities/TeamMatchParticipation";
+import { Award } from "../../db/schemas/Award";
+import { TeamMatchParticipation } from "../../db/schemas/TeamMatchParticipation";
 import { TepStatsUnionGQL } from "../dyn/dyn-types-schema";
 import { addTypename } from "../dyn/tep";
 import { EventGQL } from "./Event";
@@ -33,14 +32,14 @@ export const TeamEventParticipationGQL = new GraphQLObjectType({
                 { season: Season; code: string }
             >(
                 (tep) => ({ season: tep.season, code: tep.eventCode }),
-                async (keys) => Event.find({ where: keys })
+                async (keys) => Event.find(keys)
             ),
         },
         team: {
             type: nn(TeamGQL),
             resolve: dataLoaderResolverSingle<TeamEventParticipation, Team, number>(
                 (tep) => tep.teamNumber,
-                (keys) => Team.find({ where: { number: In(keys) } }),
+                (keys) => Team.find({ number: { $in: keys } }),
                 (k, t) => k == t.number
             ),
         },
@@ -71,7 +70,7 @@ export const TeamEventParticipationGQL = new GraphQLObjectType({
                     eventCode: tep.eventCode,
                     teamNumber: tep.teamNumber,
                 }),
-                (keys) => TeamMatchParticipation.find({ where: keys })
+                (keys) => TeamMatchParticipation.find(keys)
             ),
         },
     }),

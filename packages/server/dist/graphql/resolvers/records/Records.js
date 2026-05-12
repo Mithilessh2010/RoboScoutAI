@@ -17,10 +17,9 @@ const common_1 = require("@ftc-scout/common");
 const graphql_1 = require("graphql");
 const TeamEventParticipation_1 = require("../TeamEventParticipation");
 const team_event_participation_1 = require("../../../db/entities/dyn/team-event-participation");
-const data_source_1 = require("../../../db/data-source");
 const enums_1 = require("../enums");
 const filter_gql_1 = require("./filter-gql");
-const match_score_1 = require("../../../db/entities/dyn/match-score");
+const match_score_1 = require("../../../db/schemas/dyn/match-score");
 const Match_1 = require("../Match");
 const graphql_fields_1 = __importDefault(require("graphql-fields"));
 function RecordGqlTy(wrapped, namePrefix) {
@@ -52,8 +51,8 @@ const SpecificAlliance = new graphql_1.GraphQLObjectType({
 });
 const TepRecordsGql = (0, common_1.wr)((0, common_1.nn)(RecordGqlTy(TeamEventParticipation_1.TeamEventParticipationGQL, "Tep")));
 const MatchRecordsGql = (0, common_1.wr)((0, common_1.nn)(RecordGqlTy(SpecificAlliance, "Match")));
-function name(ns, exp) {
-    return exp.match(/^\w+$/) ? ns.columnName(exp, undefined, []) : exp;
+function fieldName(exp) {
+    return exp;
 }
 exports.RecordQueries = {
     tepRecords: Object.assign(Object.assign({}, TepRecordsGql), { args: {
@@ -77,7 +76,7 @@ exports.RecordQueries = {
                 take = Math.min(take, 50);
                 let descriptor = common_1.DESCRIPTORS[season];
                 let statSet = (0, common_1.getTepStatSet)(season, false);
-                let ns = data_source_1.DATA_SOURCE.namingStrategy;
+                let ns = DATA_SOURCE.namingStrategy;
                 let defaultRankerSqlName = descriptor.pensSubtract
                     ? "oprTotalPoints"
                     : "oprTotalPointsNp";
@@ -141,7 +140,7 @@ exports.RecordQueries = {
                 if (skip >= count) {
                     return { data: [], offset: skip, count };
                 }
-                let rankedQ = data_source_1.DATA_SOURCE.createQueryBuilder()
+                let rankedQ = DATA_SOURCE.createQueryBuilder()
                     .from("context_added", "context_added")
                     .addSelect("*")
                     .addSelect(`RANK() over (order by ranking, ranker ${sortDirSql} NULLS LAST, ${defaultSortSql})`, "no_filter_skip_rank")
@@ -150,7 +149,7 @@ exports.RecordQueries = {
                     .addSelect(`RANK() over (partition by is_in order by ranker ${sortDirSql} NULLS LAST, ${defaultSortSql})`, "filter_rank")
                     .orderBy("ranker", sortDir == common_1.SortDir.Asc ? "ASC" : "DESC", "NULLS LAST")
                     .addOrderBy(name(ns, defaultRankerSqlName), "DESC", "NULLS LAST");
-                let finalQ = yield data_source_1.DATA_SOURCE.createQueryBuilder()
+                let finalQ = yield DATA_SOURCE.createQueryBuilder()
                     .addCommonTableExpression(contextAddedQ, "context_added")
                     .addCommonTableExpression(rankedQ, "ranked")
                     .from("ranked", "ranked")
@@ -201,7 +200,7 @@ exports.RecordQueries = {
                 take = Math.min(take, 50);
                 let descriptor = common_1.DESCRIPTORS[season];
                 let statSet = (0, common_1.getMatchStatSet)(season, false);
-                let ns = data_source_1.DATA_SOURCE.namingStrategy;
+                let ns = DATA_SOURCE.namingStrategy;
                 let defaultRankerSqlName = descriptor.pensSubtract ? "totalPoints" : "totalPointsNp";
                 let rankerExp = (_b = (_a = statSet.getStat(sortBy !== null && sortBy !== void 0 ? sortBy : "")) === null || _a === void 0 ? void 0 : _a.sqlExpr) !== null && _b !== void 0 ? _b : defaultRankerSqlName;
                 let rankerSql = name(ns, rankerExp);
@@ -297,14 +296,14 @@ exports.RecordQueries = {
                 if (skip >= count) {
                     return { data: [], offset: skip, count };
                 }
-                let rankedQ = data_source_1.DATA_SOURCE.createQueryBuilder()
+                let rankedQ = DATA_SOURCE.createQueryBuilder()
                     .from("context_added", "context_added")
                     .addSelect("*")
                     .addSelect(`RANK() over (order by ranker ${sortDirSql} NULLS LAST, ${defaultSortSql})`, "no_filter_rank")
                     .addSelect(`RANK() over (partition by is_in order by ranker ${sortDirSql} NULLS LAST, ${defaultSortSql})`, "filter_rank")
                     .orderBy("ranker", sortDir == common_1.SortDir.Asc ? "ASC" : "DESC", "NULLS LAST")
                     .addOrderBy(name(ns, defaultRankerSqlName), "DESC", "NULLS LAST");
-                let finalQ = yield data_source_1.DATA_SOURCE.createQueryBuilder()
+                let finalQ = yield DATA_SOURCE.createQueryBuilder()
                     .addCommonTableExpression(contextAddedQ, "context_added")
                     .addCommonTableExpression(rankedQ, "ranked")
                     .from("ranked", "ranked")

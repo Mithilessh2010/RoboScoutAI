@@ -1,5 +1,5 @@
 import { CURRENT_SEASON, PAST_SEASONS } from "@ftc-scout/common";
-import { DataHasBeenLoaded } from "../db/entities/DataHasBeenLoaded";
+import { DataHasBeenLoaded, markDataLoaded, checkDataLoaded } from "../db/schemas/DataHasBeenLoaded";
 import { loadAllTeams } from "../db/loaders/load-all-teams";
 import { loadAllEvents } from "../db/loaders/load-all-events";
 import { loadAllMatches } from "../db/loaders/load-all-matches";
@@ -15,22 +15,24 @@ export type LoadType = (typeof LoadType)[keyof typeof LoadType];
 export async function fetchPriorSeasons() {
     for (let season of PAST_SEASONS) {
         console.info(`Checking load of season ${season}.`);
-        if (!(await DataHasBeenLoaded.teamsHaveBeenLoaded(season))) {
+        let data = await checkDataLoaded(season);
+        
+        if (!data.teams) {
             await loadAllTeams(season);
         } else {
             console.info(`Teams already loaded.`);
         }
-        if (!(await DataHasBeenLoaded.eventsHaveBeenLoaded(season))) {
+        if (!data.events) {
             await loadAllEvents(season);
         } else {
             console.info(`Events already loaded.`);
         }
-        if (!(await DataHasBeenLoaded.matchesHaveBeenLoaded(season))) {
+        if (!data.matches) {
             await loadAllMatches(season, LoadType.Full);
         } else {
             console.info(`Matches already loaded.`);
         }
-        if (!(await DataHasBeenLoaded.awardsHaveBeenLoaded(season))) {
+        if (!data.awards) {
             await loadAllAwards(season, LoadType.Full);
         } else {
             console.info(`Awards already loaded.`);

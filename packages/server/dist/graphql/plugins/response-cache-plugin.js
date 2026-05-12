@@ -31,7 +31,7 @@ function generateCacheKey(operationName, query, variables) {
     hash.update(JSON.stringify(variables));
     return `gql:${operationName}:${hash.digest("hex")}`;
 }
-function responseCachePlugin(cache) {
+function responseCachePlugin(cache, ttlOverrideSeconds) {
     console.log("[RESPONSE CACHE PLUGIN] Initialized with cache config:", Object.keys(CACHE_CONFIG));
     return {
         requestDidStart() {
@@ -53,6 +53,9 @@ function responseCachePlugin(cache) {
                                 return;
                             }
                             ttl = config.maxAge || 0;
+                            if (typeof ttlOverrideSeconds === "number") {
+                                ttl = Math.min(ttl, Math.max(0, ttlOverrideSeconds));
+                            }
                             shouldCache = ttl > 0;
                             if (!shouldCache) {
                                 return;

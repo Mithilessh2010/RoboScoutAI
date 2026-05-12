@@ -3,7 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.initTep = exports.TeamEventParticipation = exports.TeamEventParticipationSchemas = void 0;
 const common_1 = require("@ftc-scout/common");
 const typeorm_1 = require("typeorm");
-const data_source_1 = require("../../data-source");
 const typeorm_naming_strategies_1 = require("typeorm-naming-strategies");
 const ns = new typeorm_naming_strategies_1.SnakeNamingStrategy();
 function makeTep(descriptor) {
@@ -86,7 +85,7 @@ for (let d of common_1.DESCRIPTORS_LIST) {
 exports.TeamEventParticipation = {};
 function initTep() {
     for (let d of common_1.DESCRIPTORS_LIST) {
-        exports.TeamEventParticipation[d.season] = data_source_1.DATA_SOURCE.getRepository(exports.TeamEventParticipationSchemas[d.season]);
+        exports.TeamEventParticipation[d.season] = DATA_SOURCE.getRepository(exports.TeamEventParticipationSchemas[d.season]);
     }
 }
 exports.initTep = initTep;

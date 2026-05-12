@@ -1,44 +1,31 @@
-import { CURRENT_SEASON, Season, notEmpty } from "@ftc-scout/common";
+import { Season, notEmpty } from "@ftc-scout/common";
 import { getTeams } from "../../ftc-api/get-teams";
-import { Team } from "../entities/Team";
-import { DATA_SOURCE } from "../data-source";
-import { DataHasBeenLoaded } from "../entities/DataHasBeenLoaded";
+import { Team, teamFromApi } from "../schemas/Team";
+import { connectDB } from "../mongodb";
+import { markDataLoaded } from "../schemas/DataHasBeenLoaded";
 
 export async function loadAllTeams(season: Season) {
     console.info(`Loading teams for season ${season}.`);
+    await connectDB();
 
     let apiTeams = await getTeams(season);
-
     console.info(`Fetched teams.`);
 
-    let dbTeams = apiTeams.map(Team.fromApi).filter(notEmpty);
-
+    let dbTeams = apiTeams.map(teamFromApi).filter(notEmpty);
     console.info(`Adding teams to database.`);
 
-    await DATA_SOURCE.transaction(async (em) => {
-        if (season == CURRENT_SEASON) {
-            await em.save(dbTeams, { chunk: 100 });
-        } else {
-            // Don't override date from latest season with older seasons.
-            const chunkSize = 1000;
-            const chunks = [];
+    const bulkOps = dbTeams.map((team) => ({
+        updateOne: {
+            filter: { number: team.number },
+            update: { $set: team },
+            upsert: true,
+        },
+    }));
 
-            for (let i = 0; i < dbTeams.length; i += chunkSize) {
-                chunks.push(dbTeams.slice(i, i + chunkSize));
-            }
+    if (bulkOps.length > 0) {
+        await Team.bulkWrite(bulkOps);
+    }
 
-            for (const chunk of chunks) {
-                await em
-                    .createQueryBuilder()
-                    .insert()
-                    .into(Team)
-                    .values(chunk)
-                    .orIgnore()
-                    .execute();
-            }
-        }
-        await em.save(DataHasBeenLoaded.create({ season, teams: true }));
-    });
-
+    await markDataLoaded(season, "teams");
     console.info(`Finished loading teams.`);
 }

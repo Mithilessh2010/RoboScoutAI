@@ -18,9 +18,7 @@ const TeamMatchParticipation_1 = require("../db/entities/TeamMatchParticipation"
 const Event_1 = require("../db/entities/Event");
 const luxon_1 = require("luxon");
 const Match_1 = require("../db/entities/Match");
-const data_source_1 = require("../db/data-source");
 const match_score_1 = require("../graphql/dyn/match-score");
-const typeorm_1 = require("typeorm");
 const Team_2 = require("../graphql/resolvers/Team");
 const tep_1 = require("../graphql/dyn/tep");
 const store_1 = require("../watch-room/store");
@@ -262,7 +260,7 @@ function teamSearch(req, res) {
             res.status(400).send(`Invalid limit ${limit}.`);
             return;
         }
-        let q = data_source_1.DATA_SOURCE.getRepository(Team_1.Team).createQueryBuilder("t").distinctOn(["number"]);
+        let q = DATA_SOURCE.getRepository(Team_1.Team).createQueryBuilder("t").distinctOn(["number"]);
         if (region && region != common_1.RegionOption.All) {
             q.leftJoin(TeamMatchParticipation_1.TeamMatchParticipation, "m", "t.number = m.team_number")
                 .leftJoin(Event_1.Event, "e", "e.season = m.season AND e.code = m.event_code")
@@ -320,7 +318,7 @@ function eventMatches(req, res) {
             res.status(404).send(`No event in season ${season} with code ${code}.`);
             return;
         }
-        let matches = yield data_source_1.DATA_SOURCE.getRepository(Match_1.Match)
+        let matches = yield DATA_SOURCE.getRepository(Match_1.Match)
             .createQueryBuilder("m")
             .where("m.event_season = :season", { season })
             .andWhere("m.event_code = :code", { code })
@@ -396,7 +394,7 @@ function eventSearch(req, res) {
             res.status(400).send(`Invalid limit ${limit}.`);
             return;
         }
-        let q = data_source_1.DATA_SOURCE.getRepository(Event_1.Event)
+        let q = DATA_SOURCE.getRepository(Event_1.Event)
             .createQueryBuilder("e")
             .distinctOn(["code"])
             .addSelect("coalesce(m.has_been_played, false)", "has_matches")
@@ -495,7 +493,7 @@ function eventPreview(req, res) {
         let eventCodes = new Set(candidateStats.map((r) => r.eventCode));
         let events = yield Event_1.Event.findBy({
             season: event.season,
-            code: (0, typeorm_1.In)([...eventCodes]),
+            code: In([...eventCodes]),
         });
         let eventMap = new Map(events.map((e) => [e.code, e]));
         res.send(teamNumbers.map((teamNumber) => {

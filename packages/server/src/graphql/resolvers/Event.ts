@@ -2,8 +2,8 @@ import { GraphQLFieldConfig, GraphQLObjectType } from "graphql";
 import { dataLoaderResolverList, dataLoaderResolverSingle } from "../utils";
 import { EventTypeGQL, EventTypeOptionGQL, RegionOptionGQL } from "./enums";
 import { AwardGQL, teamAwareAwardLoader } from "./Award";
-import { Event } from "../../db/entities/Event";
-import { Award } from "../../db/entities/Award";
+import { Event } from "../../db/schemas/Event";
+import { Award } from "../../db/schemas/Award";
 import {
     BoolTy,
     DateTimeTy,
@@ -26,15 +26,13 @@ import {
     wr,
 } from "@ftc-scout/common";
 import { TeamMatchParticipationGQL } from "./TeamMatchParticipation";
-import { TeamMatchParticipation } from "../../db/entities/TeamMatchParticipation";
+import { TeamMatchParticipation } from "../../db/schemas/TeamMatchParticipation";
 import { MatchGQL, singleSeasonScoreAwareMatchLoader } from "./Match";
-import { Match } from "../../db/entities/Match";
+import { Match } from "../../db/schemas/Match";
 import { TeamEventParticipationGQL } from "./TeamEventParticipation";
-import { TeamEventParticipation } from "../../db/entities/dyn/team-event-participation";
+import { TeamEventParticipation } from "../../db/schemas/dyn/team-event-participation";
 import { LocationGQL } from "../objs/Location";
 import { DateTime } from "luxon";
-import { DATA_SOURCE } from "../../db/data-source";
-import { Brackets, In } from "typeorm";
 import { newMatchesKey, pubsub } from "./pubsub";
 import { TepStatsUnionGQL } from "../dyn/dyn-types-schema";
 import { addTypename } from "../dyn/tep";
@@ -120,22 +118,19 @@ export const EventGQL: GraphQLObjectType = new GraphQLObjectType({
 
         relatedEvents: {
             type: list(nn(EventGQL)),
-            resolve: (e) =>
-                DATA_SOURCE.getRepository(Event)
-                    .createQueryBuilder("e")
-                    .where("e.season = :season", { season: e.season })
-                    .andWhere("e.code <> :code", { code: e.code })
-                    .andWhere(
-                        new Brackets((qb) => {
-                            if (e.divisionCode) {
-                                qb.orWhere("e.code = :divCode", {
-                                    divCode: e.divisionCode,
-                                }).orWhere("e.divisionCode = :divCode");
-                            }
-                            qb.orWhere("e.divisionCode = :code");
-                        })
-                    )
-                    .getMany(),
+            resolve: async (e) => {
+                const query: any = { season: e.season, code: { $ne: e.code } };
+                if (e.divisionCode) {
+                    query.$or = [
+                        { code: e.divisionCode },
+                        { divisionCode: e.divisionCode },
+                        { divisionCode: e.code }
+                    ];
+                } else {
+                    query.divisionCode = e.code;
+                }
+                return Event.find(query);
+            },
         },
 
         awards: {
@@ -222,10 +217,10 @@ export const EventGQL: GraphQLObjectType = new GraphQLObjectType({
                     return null;
                 }
 
-                let roster = await TeamEventParticipation[event.season].find({
-                    where: { season: event.season, eventCode: event.code },
-                    select: ["teamNumber"],
-                });
+                let roster = await TeamEventParticipation[event.season].find(
+                    { season: event.season, eventCode: event.code },
+                    { select: ["teamNumber"] }
+                );
                 let teamNumbers = roster.map((r) => r.teamNumber);
                 if (!teamNumbers.length) return [];
 
@@ -237,14 +232,11 @@ export const EventGQL: GraphQLObjectType = new GraphQLObjectType({
                     return val == null ? null : +val;
                 };
 
-                let candidateStats = await TeamEventParticipation[event.season]
-                    .createQueryBuilder("t")
-                    .innerJoin(Event, "e", "e.season = t.season AND e.code = t.eventCode")
-                    .where("t.teamNumber IN (:...teamNumbers)", { teamNumbers })
-                    .andWhere("NOT t.isRemote")
-                    .andWhere("t.hasStats")
-                    .andWhere("NOT e.modified_rules")
-                    .getMany();
+                let candidateStats = await TeamEventParticipation[event.season].find({
+                    teamNumber: { $in: teamNumbers },
+                    isRemote: false,
+                    hasStats: true,
+                });
 
                 let bestStats = new Map<
                     number,
@@ -267,9 +259,9 @@ export const EventGQL: GraphQLObjectType = new GraphQLObjectType({
                 }
 
                 let eventCodes = new Set(candidateStats.map((r) => r.eventCode));
-                let events = await Event.findBy({
+                let events = await Event.find({
                     season: event.season,
-                    code: In([...eventCodes]),
+                    code: { $in: [...eventCodes] },
                 });
                 let eventMap = new Map(events.map((e) => [e.code, e]));
 
@@ -317,7 +309,7 @@ export const EventQueries: Record<string, GraphQLFieldConfig<any, any>> = {
             { season: Season; code: string }
         >(
             (_, a) => a,
-            (keys) => Event.find({ where: keys })
+            (keys) => Event.find(keys)
         ),
     },
 
@@ -355,38 +347,39 @@ export const EventQueries: Record<string, GraphQLFieldConfig<any, any>> = {
                 searchText: string | null;
             }
         ) => {
-            let q = DATA_SOURCE.getRepository(Event)
-                .createQueryBuilder("e")
-                .distinctOn(["code"])
-                .addSelect("coalesce(m.has_been_played, false)", "has_matches")
-                .where("season = :season", { season });
+            let query: any = { season };
 
             if (region && region != RegionOption.All) {
-                q.andWhere("region_code IN (:...regions)", { regions: getRegionCodes(region) });
+                query.regionCode = { $in: getRegionCodes(region) };
             }
 
             if (type && type != EventTypeOption.All) {
-                q.andWhere("type IN (:...types)", { types: getEventTypes(type) });
+                query.type = { $in: getEventTypes(type) };
             }
 
             if (start) {
-                q.andWhere('"start" >= :start', { start: start.toISOString().split("T")[0] });
+                query.start = { $gte: new Date(start.toISOString().split("T")[0]) };
             }
 
             if (end) {
-                q.andWhere('"end" <= :end', { end: end.toISOString().split("T")[0] });
+                query.end = { $lte: new Date(end.toISOString().split("T")[0]) };
             }
 
+            let options: any = {};
             if (limit && (!searchText || searchText.trim() == "")) {
-                q.limit(limit);
+                options.limit = limit;
             }
 
-            let { entities, raw } = await q
-                .leftJoin(Match, "m", "e.season = m.event_season AND e.code = m.event_code")
-                .getRawAndEntities();
+            let entities = await Event.find(query, {}, options);
 
-            for (let i = 0; i < entities.length; i++) {
-                (entities[i] as any).hasMatches = raw[i].has_matches;
+            // Add hasMatches flag
+            for (let entity of entities) {
+                const match = await Match.findOne({
+                    eventSeason: entity.season,
+                    eventCode: entity.code,
+                    hasBeenPlayed: true,
+                });
+                (entity as any).hasMatches = !!match;
             }
 
             if (hasMatches != null) {

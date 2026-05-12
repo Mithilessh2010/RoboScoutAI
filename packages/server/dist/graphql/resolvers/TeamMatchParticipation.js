@@ -6,10 +6,9 @@ const utils_1 = require("../utils");
 const common_1 = require("@ftc-scout/common");
 const enums_1 = require("./enums");
 const Team_1 = require("./Team");
-const Team_2 = require("../../db/entities/Team");
-const typeorm_1 = require("typeorm");
+const Team_2 = require("../../db/schemas/Team");
 const Event_1 = require("./Event");
-const Event_2 = require("../../db/entities/Event");
+const Event_2 = require("../../db/schemas/Event");
 const Match_1 = require("./Match");
 exports.TeamMatchParticipationGQL = new graphql_1.GraphQLObjectType({
     name: "TeamMatchParticipation",
@@ -29,7 +28,7 @@ exports.TeamMatchParticipationGQL = new graphql_1.GraphQLObjectType({
         updatedAt: common_1.DateTimeTy,
         team: {
             type: (0, common_1.nn)(Team_1.TeamGQL),
-            resolve: (0, utils_1.dataLoaderResolverSingle)((tmp) => tmp.teamNumber, (keys) => Team_2.Team.find({ where: { number: (0, typeorm_1.In)(keys) } }), (k, r) => k == r.number),
+            resolve: (0, utils_1.dataLoaderResolverSingle)((tmp) => tmp.teamNumber, (keys) => Team_2.Team.find({ number: { $in: keys } }), (k, r) => k == r.number),
         },
         match: {
             type: (0, common_1.nn)(Match_1.MatchGQL),
@@ -37,7 +36,7 @@ exports.TeamMatchParticipationGQL = new graphql_1.GraphQLObjectType({
         },
         event: {
             type: (0, common_1.nn)(Event_1.EventGQL),
-            resolve: (0, utils_1.dataLoaderResolverSingle)((tmp) => ({ season: tmp.season, code: tmp.eventCode }), (keys) => Event_2.Event.find({ where: keys })),
+            resolve: (0, utils_1.dataLoaderResolverSingle)((tmp) => ({ season: tmp.season, code: tmp.eventCode }), (keys) => Event_2.Event.find(keys)),
         },
     }),
 });

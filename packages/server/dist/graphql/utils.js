@@ -14,7 +14,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.keyListToWhereClause = exports.dataLoaderResolverList = exports.dataLoaderResolverSingle = exports.dataLoaderResolver = void 0;
 const dataloader_1 = __importDefault(require("dataloader"));
-const typeorm_1 = require("typeorm");
 function dataLoaderResolver(argsToKey, keysToResults, groupResults) {
     let dl = new dataloader_1.default((kAndI) => __awaiter(this, void 0, void 0, function* () {
         let keys = kAndI.map((k) => k[0]);
@@ -49,9 +48,9 @@ function dataLoaderResolverList(argsToKey, keysToResults, keyMatchesResult = mat
 exports.dataLoaderResolverList = dataLoaderResolverList;
 function keyListToWhereClause(tableName, keys) {
     let vIdx = 0;
-    return new typeorm_1.Brackets((qb) => {
+    return new Brackets((qb) => {
         for (let key of keys) {
-            let thisKey = new typeorm_1.Brackets((subQb) => {
+            let thisKey = new Brackets((subQb) => {
                 for (let [k, v] of Object.entries(key)) {
                     subQb.andWhere(`${tableName}.${k} = :v${vIdx}`, { [`v${vIdx}`]: v });
                     vIdx += 1;

@@ -10,32 +10,31 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.apiLoggerMiddleware = exports.ApiReq = void 0;
-const typeorm_1 = require("typeorm");
-const constants_1 = require("../../constants");
-let ApiReq = exports.ApiReq = class ApiReq extends typeorm_1.BaseEntity {
+const FRONTEND_REQUEST_HEADER = "x-roboscoutai-frontend";
+let ApiReq = exports.ApiReq = class ApiReq extends BaseEntity {
 };
 __decorate([
-    (0, typeorm_1.PrimaryGeneratedColumn)(),
+    PrimaryGeneratedColumn(),
     __metadata("design:type", Number)
 ], ApiReq.prototype, "id", void 0);
 __decorate([
-    (0, typeorm_1.Column)("json"),
+    Column("json"),
     __metadata("design:type", Object)
 ], ApiReq.prototype, "headers", void 0);
 __decorate([
-    (0, typeorm_1.Column)("json"),
+    Column("json"),
     __metadata("design:type", Object)
 ], ApiReq.prototype, "req", void 0);
 __decorate([
-    (0, typeorm_1.CreateDateColumn)({ type: "timestamptz" }),
+    CreateDateColumn({ type: "timestamptz" }),
     __metadata("design:type", Date)
 ], ApiReq.prototype, "createdAt", void 0);
 exports.ApiReq = ApiReq = __decorate([
-    (0, typeorm_1.Entity)()
+    Entity()
 ], ApiReq);
 function apiLoggerMiddleware(req, _, next) {
     var _a;
-    if (!(constants_1.FRONTEND_CODE in req.headers) && ((_a = req.body) === null || _a === void 0 ? void 0 : _a["operationName"]) != "IntrospectionQuery") {
+    if (!(FRONTEND_REQUEST_HEADER in req.headers) && ((_a = req.body) === null || _a === void 0 ? void 0 : _a["operationName"]) != "IntrospectionQuery") {
         ApiReq.save({ req: req.body, headers: req.rawHeaders });
     }
     next();

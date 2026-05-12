@@ -6,21 +6,21 @@ export declare function getQuickStats(number: number, season: Season, region: Re
     number: number;
     tot: {
         value: any;
-        rank: number;
+        rank: any;
     };
     auto: {
         value: any;
-        rank: number;
+        rank: any;
     };
     dc: {
         value: any;
-        rank: number;
+        rank: any;
     };
     eg: {
         value: any;
-        rank: number;
+        rank: any;
     };
-    count: number;
+    count: any;
 } | null>;
 export declare const TeamGQL: GraphQLObjectType;
 export declare const TeamQueries: Record<string, GraphQLFieldConfig<any, any>>;

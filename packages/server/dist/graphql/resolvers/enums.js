@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FilterGroupTyGQL = exports.FilterOpGQL = exports.SortDirGQL = exports.AwardTypeGQL = exports.TournamentLevelGQL = exports.RegionOptionGQL = exports.RemoteOptionGQL = exports.EventTypeOptionGQL = exports.EventTypeGQL = exports.AllianceRoleGQL = exports.StationGQL = exports.AllianceGQL = void 0;
 const common_1 = require("@ftc-scout/common");
-const Award_1 = require("../../db/entities/Award");
+const Award_1 = require("../../db/schemas/Award");
 exports.AllianceGQL = (0, common_1.makeGQLEnum)(common_1.Alliance, "Alliance");
 exports.StationGQL = (0, common_1.makeGQLEnum)(common_1.Station, "Station");
 exports.AllianceRoleGQL = (0, common_1.makeGQLEnum)(common_1.AllianceRole, "AllianceRole");

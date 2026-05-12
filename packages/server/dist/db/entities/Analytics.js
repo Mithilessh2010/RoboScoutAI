@@ -10,54 +10,53 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Analytics = void 0;
-const typeorm_1 = require("typeorm");
-let Analytics = exports.Analytics = class Analytics extends typeorm_1.BaseEntity {
+let Analytics = exports.Analytics = class Analytics extends BaseEntity {
 };
 __decorate([
-    (0, typeorm_1.PrimaryGeneratedColumn)(),
+    PrimaryGeneratedColumn(),
     __metadata("design:type", Number)
 ], Analytics.prototype, "id", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
-    (0, typeorm_1.Index)(),
+    Column(),
+    Index(),
     __metadata("design:type", String)
 ], Analytics.prototype, "url", void 0);
 __decorate([
-    (0, typeorm_1.Column)("varchar", { nullable: true }),
-    (0, typeorm_1.Index)(),
+    Column("varchar", { nullable: true }),
+    Index(),
     __metadata("design:type", Object)
 ], Analytics.prototype, "fromUrl", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
-    (0, typeorm_1.Index)(),
+    Column(),
+    Index(),
     __metadata("design:type", Boolean)
 ], Analytics.prototype, "pathChanged", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
-    (0, typeorm_1.Index)(),
+    Column(),
+    Index(),
     __metadata("design:type", String)
 ], Analytics.prototype, "sessionId", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
-    (0, typeorm_1.Index)(),
+    Column(),
+    Index(),
     __metadata("design:type", String)
 ], Analytics.prototype, "userId", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
-    (0, typeorm_1.Index)(),
+    Column(),
+    Index(),
     __metadata("design:type", String)
 ], Analytics.prototype, "browser", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
-    (0, typeorm_1.Index)(),
+    Column(),
+    Index(),
     __metadata("design:type", String)
 ], Analytics.prototype, "deviceType", void 0);
 __decorate([
-    (0, typeorm_1.Column)("timestamptz"),
-    (0, typeorm_1.Index)(),
+    Column("timestamptz"),
+    Index(),
     __metadata("design:type", Date)
 ], Analytics.prototype, "date", void 0);
 exports.Analytics = Analytics = __decorate([
-    (0, typeorm_1.Entity)()
+    Entity()
 ], Analytics);
 //# sourceMappingURL=Analytics.js.map

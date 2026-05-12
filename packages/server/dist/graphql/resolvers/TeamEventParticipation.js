@@ -13,12 +13,11 @@ exports.TeamEventParticipationGQL = void 0;
 const common_1 = require("@ftc-scout/common");
 const graphql_1 = require("graphql");
 const utils_1 = require("../utils");
-const Event_1 = require("../../db/entities/Event");
+const Event_1 = require("../../db/schemas/Event");
 const Team_1 = require("./Team");
-const Team_2 = require("../../db/entities/Team");
-const typeorm_1 = require("typeorm");
+const Team_2 = require("../../db/schemas/Team");
 const Award_1 = require("./Award");
-const TeamMatchParticipation_1 = require("../../db/entities/TeamMatchParticipation");
+const TeamMatchParticipation_1 = require("../../db/schemas/TeamMatchParticipation");
 const dyn_types_schema_1 = require("../dyn/dyn-types-schema");
 const tep_1 = require("../dyn/tep");
 const Event_2 = require("./Event");
@@ -35,11 +34,11 @@ exports.TeamEventParticipationGQL = new graphql_1.GraphQLObjectType({
         },
         event: {
             type: (0, common_1.nn)(Event_2.EventGQL),
-            resolve: (0, utils_1.dataLoaderResolverSingle)((tep) => ({ season: tep.season, code: tep.eventCode }), (keys) => __awaiter(void 0, void 0, void 0, function* () { return Event_1.Event.find({ where: keys }); })),
+            resolve: (0, utils_1.dataLoaderResolverSingle)((tep) => ({ season: tep.season, code: tep.eventCode }), (keys) => __awaiter(void 0, void 0, void 0, function* () { return Event_1.Event.find(keys); })),
         },
         team: {
             type: (0, common_1.nn)(Team_1.TeamGQL),
-            resolve: (0, utils_1.dataLoaderResolverSingle)((tep) => tep.teamNumber, (keys) => Team_2.Team.find({ where: { number: (0, typeorm_1.In)(keys) } }), (k, t) => k == t.number),
+            resolve: (0, utils_1.dataLoaderResolverSingle)((tep) => tep.teamNumber, (keys) => Team_2.Team.find({ number: { $in: keys } }), (k, t) => k == t.number),
         },
         awards: {
             type: (0, common_1.list)((0, common_1.nn)(Award_1.AwardGQL)),
@@ -55,7 +54,7 @@ exports.TeamEventParticipationGQL = new graphql_1.GraphQLObjectType({
                 season: tep.season,
                 eventCode: tep.eventCode,
                 teamNumber: tep.teamNumber,
-            }), (keys) => TeamMatchParticipation_1.TeamMatchParticipation.find({ where: keys })),
+            }), (keys) => TeamMatchParticipation_1.TeamMatchParticipation.find(keys)),
         },
     }),
 });

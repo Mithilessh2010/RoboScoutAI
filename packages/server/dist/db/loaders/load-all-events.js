@@ -10,22 +10,30 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.loadAllEvents = void 0;
-const data_source_1 = require("../data-source");
-const Event_1 = require("../../db/entities/Event");
+const Event_1 = require("../schemas/Event");
 const common_1 = require("@ftc-scout/common");
-const DataHasBeenLoaded_1 = require("../entities/DataHasBeenLoaded");
+const DataHasBeenLoaded_1 = require("../schemas/DataHasBeenLoaded");
 const get_events_1 = require("../../ftc-api/get-events");
+const mongodb_1 = require("../mongodb");
 function loadAllEvents(season) {
     return __awaiter(this, void 0, void 0, function* () {
         console.info(`Loading events for season ${season}.`);
+        yield (0, mongodb_1.connectDB)();
         let apiEvents = yield (0, get_events_1.getAllEvents)(season);
         console.info(`Fetched events.`);
-        let dbEvents = apiEvents.map((api) => Event_1.Event.fromApi(api, season)).filter(common_1.notEmpty);
+        let dbEvents = apiEvents.map((api) => (0, Event_1.eventFromApi)(api)).filter(common_1.notEmpty);
         console.info(`Adding events to database.`);
-        yield data_source_1.DATA_SOURCE.transaction((em) => __awaiter(this, void 0, void 0, function* () {
-            yield em.save(dbEvents, { chunk: 100 });
-            yield em.save(DataHasBeenLoaded_1.DataHasBeenLoaded.create({ season, events: true }));
+        const bulkOps = dbEvents.map((event) => ({
+            updateOne: {
+                filter: { season: event.season, code: event.code },
+                update: { $set: event },
+                upsert: true,
+            },
         }));
+        if (bulkOps.length > 0) {
+            yield Event_1.Event.bulkWrite(bulkOps);
+        }
+        yield (0, DataHasBeenLoaded_1.markDataLoaded)(season, "events");
         console.info(`Finished loading events.`);
     });
 }

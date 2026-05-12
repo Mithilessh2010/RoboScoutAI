@@ -1,4 +1,12 @@
 {
-    "buildCommand": "npm run vercel-build",
-    "installCommand": "npm install"
+    "buildCommand": "npm install && npm run build",
+    "installCommand": "npm install",
+    "env": {
+        "DATABASE_URL": "@mongodb_url"
+    },
+    "functions": {
+        "api/**/*.ts": {
+            "maxDuration": 30
+        }
+    }
 }

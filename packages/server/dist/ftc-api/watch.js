@@ -11,7 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.watchApi = exports.fetchPriorSeasons = exports.LoadType = void 0;
 const common_1 = require("@ftc-scout/common");
-const DataHasBeenLoaded_1 = require("../db/entities/DataHasBeenLoaded");
+const DataHasBeenLoaded_1 = require("../db/schemas/DataHasBeenLoaded");
 const load_all_teams_1 = require("../db/loaders/load-all-teams");
 const load_all_events_1 = require("../db/loaders/load-all-events");
 const load_all_matches_1 = require("../db/loaders/load-all-matches");
@@ -25,25 +25,26 @@ function fetchPriorSeasons() {
     return __awaiter(this, void 0, void 0, function* () {
         for (let season of common_1.PAST_SEASONS) {
             console.info(`Checking load of season ${season}.`);
-            if (!(yield DataHasBeenLoaded_1.DataHasBeenLoaded.teamsHaveBeenLoaded(season))) {
+            let data = yield (0, DataHasBeenLoaded_1.checkDataLoaded)(season);
+            if (!data.teams) {
                 yield (0, load_all_teams_1.loadAllTeams)(season);
             }
             else {
                 console.info(`Teams already loaded.`);
             }
-            if (!(yield DataHasBeenLoaded_1.DataHasBeenLoaded.eventsHaveBeenLoaded(season))) {
+            if (!data.events) {
                 yield (0, load_all_events_1.loadAllEvents)(season);
             }
             else {
                 console.info(`Events already loaded.`);
             }
-            if (!(yield DataHasBeenLoaded_1.DataHasBeenLoaded.matchesHaveBeenLoaded(season))) {
+            if (!data.matches) {
                 yield (0, load_all_matches_1.loadAllMatches)(season, exports.LoadType.Full);
             }
             else {
                 console.info(`Matches already loaded.`);
             }
-            if (!(yield DataHasBeenLoaded_1.DataHasBeenLoaded.awardsHaveBeenLoaded(season))) {
+            if (!data.awards) {
                 yield (0, load_all_awards_1.loadAllAwards)(season, exports.LoadType.Full);
             }
             else {

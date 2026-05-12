@@ -9,13 +9,12 @@ import {
     nullTy,
 } from "@ftc-scout/common";
 import { GraphQLFieldConfig } from "graphql";
-import { TeamEventParticipation } from "../../db/entities/dyn/team-event-participation";
-import { DATA_SOURCE } from "../../db/data-source";
-import { Match } from "../../db/entities/Match";
+import { TeamEventParticipation } from "../../db/schemas/dyn/team-event-participation";
+import { Match } from "../../db/schemas/Match";
 import { EventGQL } from "./Event";
-import { Event } from "../../db/entities/Event";
+import { Event } from "../../db/schemas/Event";
 import { MatchGQL } from "./Match";
-import { MatchScore } from "../../db/entities/dyn/match-score";
+import { MatchScore } from "../../db/schemas/dyn/match-score";
 import { EventTypeOptionGQL } from "./enums";
 
 export const HomeQueries: Record<string, GraphQLFieldConfig<any, any>> = {
@@ -26,12 +25,8 @@ export const HomeQueries: Record<string, GraphQLFieldConfig<any, any>> = {
             let tep = TeamEventParticipation[season as Season];
             if (!tep) return 0;
 
-            let res = (await tep
-                .createQueryBuilder("tep")
-                .select('COUNT(DISTINCT("team_number"))')
-                .getRawOne()!) as { count: string };
-
-            return +res.count;
+            let teams = await tep.distinct("teamNumber", {});
+            return teams.length;
         },
     },
 
@@ -39,12 +34,10 @@ export const HomeQueries: Record<string, GraphQLFieldConfig<any, any>> = {
         ...IntTy,
         args: { season: IntTy },
         resolve: async (_, { season }: { season: number }) => {
-            return DATA_SOURCE.getRepository(Match)
-                .createQueryBuilder("m")
-                .select()
-                .where("m.event_season = :season", { season })
-                .andWhere("m.has_been_played")
-                .getCount();
+            return await Match.countDocuments({
+                eventSeason: season,
+                hasBeenPlayed: true,
+            });
         },
     },
 
@@ -52,18 +45,19 @@ export const HomeQueries: Record<string, GraphQLFieldConfig<any, any>> = {
         type: list(nn(EventGQL)),
         args: { date: nullTy(DateTimeTy), type: { type: EventTypeOptionGQL } },
         resolve: async (_, { date, type }: { date: Date; type: EventTypeOption }) => {
-            let q = DATA_SOURCE.getRepository(Event)
-                .createQueryBuilder("e")
-                .where("e.start <= (:e at time zone timezone)::date", { e: date ?? "NOW()" })
-                .andWhere("e.end >= (:e at time zone timezone)::date")
-                .orderBy("e.start", "ASC")
-                .addOrderBy("e.name", "DESC");
+            let query: any = {};
+            const queryDate = date ? new Date(date.toISOString().split("T")[0]) : new Date();
+
+            query.$and = [
+                { start: { $lte: queryDate } },
+                { end: { $gte: queryDate } },
+            ];
 
             if (type && type != EventTypeOption.All) {
-                q.andWhere("type IN (:...types)", { types: getEventTypes(type) });
+                query.type = { $in: getEventTypes(type) };
             }
 
-            return q.getMany();
+            return Event.find(query).sort({ start: 1, name: -1 });
         },
     },
 
@@ -71,59 +65,41 @@ export const HomeQueries: Record<string, GraphQLFieldConfig<any, any>> = {
         type: nn(MatchGQL),
         args: { season: IntTy },
         resolve: async (_, { season }: { season: number }) =>
-            getWorldRecordMatch(season, "s.total_points_np"),
+            getWorldRecordMatch(season, false),
     },
 
     tradWorldRecordWithPenalties: {
         type: nn(MatchGQL),
         args: { season: IntTy },
         resolve: async (_, { season }: { season: number }) =>
-            getWorldRecordMatch(season, "s.total_points"),
+            getWorldRecordMatch(season, true),
     },
 };
 
 async function getWorldRecordMatch(
     season: number,
-    orderColumn: "s.total_points" | "s.total_points_np"
+    includePenalties: boolean
 ) {
     let ms = MatchScore[season as Season];
     if (!ms) throw "Use a valid season";
 
-    let match = await DATA_SOURCE.getRepository(Match)
-        .createQueryBuilder("m")
-        .leftJoin(
-            `match_score_${season}`,
-            "s",
-            "s.season = m.event_season AND s.event_code = m.event_code AND s.match_id = m.id"
-        )
-        .leftJoin(Event, "e", "e.season = m.event_season AND e.code = m.event_code")
-        .orderBy(orderColumn, "DESC")
-        .where("m.has_been_played")
-        .andWhere("NOT e.remote")
-        .andWhere("e.type <> 'OffSeason'")
-        .andWhere("NOT e.modified_rules")
-        .andWhere('m."event_season" = :season', { season })
-        .limit(1)
-        .getOne();
+    // Find the match with the highest score
+    const sortField = includePenalties ? "totalPoints" : "totalPointsNp";
+    let match = await Match.findOne({
+        eventSeason: season,
+        hasBeenPlayed: true,
+    })
+        .sort({ [sortField]: -1 })
+        .lean();
 
     if (!match) throw "No match found for world record";
 
-    return DATA_SOURCE.getRepository(Match)
-        .createQueryBuilder("m")
-        .where("m.event_season = :season", { season: match.eventSeason })
-        .andWhere("m.event_code = :code", { code: match.eventCode })
-        .andWhere("m.id = :id", { id: match.id })
-        .leftJoinAndMapMany(
-            "m.scores",
-            `match_score_${season}`,
-            "ms",
-            "m.event_season = ms.season AND m.event_code = ms.event_code AND m.id = ms.match_id"
-        )
-        .leftJoinAndMapMany(
-            "m.teams",
-            "team_match_participation",
-            "tmp",
-            "m.event_season = tmp.season AND m.event_code = tmp.event_code AND m.id = tmp.match_id"
-        )
-        .getOne();
+    // Get the full match with scores and teams
+    let fullMatch = await Match.findOne({
+        eventSeason: match.eventSeason,
+        eventCode: match.eventCode,
+        id: match.id,
+    });
+
+    return fullMatch;
 }

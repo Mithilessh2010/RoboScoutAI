@@ -4,7 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.handleAnalytics = void 0;
-const Analytics_1 = require("./db/entities/Analytics");
+const Analytics_1 = require("./db/schemas/Analytics");
+const mongodb_1 = require("./db/mongodb");
 const ua_parser_js_1 = __importDefault(require("ua-parser-js"));
 const md5_1 = __importDefault(require("md5"));
 function handleAnalytics(req, res) {
@@ -36,18 +37,22 @@ function handleAnalytics(req, res) {
             return;
         let ip = (_b = req.get("x-forwarded-for")) !== null && _b !== void 0 ? _b : req.socket.remoteAddress;
         let userId = (0, md5_1.default)("ftcscout" + uaString + ip);
-        Analytics_1.Analytics.create({
-            url,
-            fromUrl,
-            pathChanged,
-            sessionId,
-            userId,
-            browser,
-            deviceType,
-            date: new Date(time),
-        }).save();
+        (0, mongodb_1.connectDB)().then(() => {
+            Analytics_1.Analytics.create({
+                url,
+                fromUrl,
+                pathChanged,
+                sessionId,
+                userId,
+                browser,
+                deviceType,
+                date: new Date(time),
+            }).catch((e) => console.error("Analytics save error:", e));
+        });
     }
-    catch (e) { }
+    catch (e) {
+        console.error("Analytics parse error:", e);
+    }
 }
 exports.handleAnalytics = handleAnalytics;
 //# sourceMappingURL=analytics.js.map

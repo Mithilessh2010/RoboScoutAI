@@ -12,38 +12,28 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.loadAllTeams = void 0;
 const common_1 = require("@ftc-scout/common");
 const get_teams_1 = require("../../ftc-api/get-teams");
-const Team_1 = require("../entities/Team");
-const data_source_1 = require("../data-source");
-const DataHasBeenLoaded_1 = require("../entities/DataHasBeenLoaded");
+const Team_1 = require("../schemas/Team");
+const mongodb_1 = require("../mongodb");
+const DataHasBeenLoaded_1 = require("../schemas/DataHasBeenLoaded");
 function loadAllTeams(season) {
     return __awaiter(this, void 0, void 0, function* () {
         console.info(`Loading teams for season ${season}.`);
+        yield (0, mongodb_1.connectDB)();
         let apiTeams = yield (0, get_teams_1.getTeams)(season);
         console.info(`Fetched teams.`);
-        let dbTeams = apiTeams.map(Team_1.Team.fromApi).filter(common_1.notEmpty);
+        let dbTeams = apiTeams.map(Team_1.teamFromApi).filter(common_1.notEmpty);
         console.info(`Adding teams to database.`);
-        yield data_source_1.DATA_SOURCE.transaction((em) => __awaiter(this, void 0, void 0, function* () {
-            if (season == common_1.CURRENT_SEASON) {
-                yield em.save(dbTeams, { chunk: 100 });
-            }
-            else {
-                const chunkSize = 1000;
-                const chunks = [];
-                for (let i = 0; i < dbTeams.length; i += chunkSize) {
-                    chunks.push(dbTeams.slice(i, i + chunkSize));
-                }
-                for (const chunk of chunks) {
-                    yield em
-                        .createQueryBuilder()
-                        .insert()
-                        .into(Team_1.Team)
-                        .values(chunk)
-                        .orIgnore()
-                        .execute();
-                }
-            }
-            yield em.save(DataHasBeenLoaded_1.DataHasBeenLoaded.create({ season, teams: true }));
+        const bulkOps = dbTeams.map((team) => ({
+            updateOne: {
+                filter: { number: team.number },
+                update: { $set: team },
+                upsert: true,
+            },
         }));
+        if (bulkOps.length > 0) {
+            yield Team_1.Team.bulkWrite(bulkOps);
+        }
+        yield (0, DataHasBeenLoaded_1.markDataLoaded)(season, "teams");
         console.info(`Finished loading teams.`);
     });
 }

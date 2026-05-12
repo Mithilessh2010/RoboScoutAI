@@ -1,7 +1,6 @@
 import { GraphQLFieldResolver, GraphQLResolveInfo } from "graphql";
 import { GQLContext } from "./context";
 import DataLoader from "dataloader";
-import { Brackets } from "typeorm";
 import { AnyObject } from "../type-utils";
 
 export function dataLoaderResolver<Source, Result, Key, Args = {}, LookupResult = Result>(

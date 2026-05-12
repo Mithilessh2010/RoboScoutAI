@@ -2,10 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.initMS = exports.MatchScore = exports.MatchScoreSchemas = void 0;
 const common_1 = require("@ftc-scout/common");
-const typeorm_1 = require("typeorm");
-const data_source_1 = require("../../data-source");
 function makeMatchScore(descriptor) {
-    return new typeorm_1.EntitySchema({
+    return new EntitySchema({
         tableName: `match_score_${descriptor.season}`,
         name: `match_score_${descriptor.season}`,
         columns: getMatchScoreColumns(descriptor),
@@ -53,7 +51,7 @@ for (let d of common_1.DESCRIPTORS_LIST) {
 exports.MatchScore = {};
 function initMS() {
     for (let d of common_1.DESCRIPTORS_LIST) {
-        exports.MatchScore[d.season] = data_source_1.DATA_SOURCE.getRepository(exports.MatchScoreSchemas[d.season]);
+        exports.MatchScore[d.season] = DATA_SOURCE.getRepository(exports.MatchScoreSchemas[d.season]);
     }
     exports.MatchScore.fromApi = (api, match, remote) => {
         let scores = "scores" in api ? [api.scores] : api.alliances;

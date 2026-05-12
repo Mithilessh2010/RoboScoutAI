@@ -13,16 +13,14 @@ exports.BestNameMutations = exports.BestNameQueries = exports.BestNameGQL = void
 const common_1 = require("@ftc-scout/common");
 const graphql_1 = require("graphql");
 const Team_1 = require("./Team");
-const Team_2 = require("../../db/entities/Team");
-const BestName_1 = require("../../db/entities/BestName");
-const data_source_1 = require("../../db/data-source");
-const typeorm_1 = require("typeorm");
+const Team_2 = require("../../db/schemas/Team");
+const BestName_1 = require("../../db/schemas/BestName");
 function deleteOld() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            yield BestName_1.BestName.delete({
+            yield BestName_1.BestName.deleteMany({
                 vote: -1,
-                createdAt: (0, typeorm_1.LessThan)(new Date(Date.now() - 1000 * 60 * 60 * 24)),
+                createdAt: { $lt: new Date(Date.now() - 1000 * 60 * 60 * 24) },
             });
         }
         catch (e) {
@@ -51,7 +49,10 @@ exports.BestNameQueries = {
     getBestName: {
         type: exports.BestNameGQL,
         resolve: () => __awaiter(void 0, void 0, void 0, function* () {
-            let teams = yield Team_2.Team.createQueryBuilder("t").orderBy("RANDOM()").take(2).getMany();
+            let teams = yield Team_2.Team.find({}).limit(2);
+            let teamCount = yield Team_2.Team.countDocuments({});
+            let randomIndices = [Math.floor(Math.random() * teamCount), Math.floor(Math.random() * teamCount)];
+            teams = yield Team_2.Team.find({}).skip(randomIndices[0]).limit(1).concat(yield Team_2.Team.find({}).skip(randomIndices[1]).limit(1));
             let bestName = BestName_1.BestName.create({
                 team1: teams[0].number,
                 team2: teams[1].number,
@@ -73,21 +74,22 @@ exports.BestNameMutations = {
             vote: common_1.IntTy,
         },
         resolve: (_, { id, vote }) => __awaiter(void 0, void 0, void 0, function* () {
-            yield data_source_1.DATA_SOURCE.createQueryBuilder()
-                .update(BestName_1.BestName)
-                .set({ vote })
-                .where("id = :id AND (team1 = :vote OR team2 = :vote)", { id, vote })
-                .execute();
-            let teams = yield Team_2.Team.createQueryBuilder("t").orderBy("RANDOM()").take(2).getMany();
+            yield BestName_1.BestName.updateOne({ id, $or: [{ team1: vote }, { team2: vote }] }, { $set: { vote } });
+            let teamCount = yield Team_2.Team.countDocuments({});
+            let randomIndices = [Math.floor(Math.random() * teamCount), Math.floor(Math.random() * teamCount)];
+            let teams = yield Promise.all([
+                Team_2.Team.find({}).skip(randomIndices[0]).limit(1),
+                Team_2.Team.find({}).skip(randomIndices[1]).limit(1)
+            ]);
             let bestName = BestName_1.BestName.create({
-                team1: teams[0].number,
-                team2: teams[1].number,
+                team1: teams[0][0].number,
+                team2: teams[1][0].number,
             });
             yield bestName.save();
             return {
                 id: bestName.id,
-                team1D: teams[0],
-                team2D: teams[1],
+                team1D: teams[0][0],
+                team2D: teams[1][0],
             };
         }),
     },

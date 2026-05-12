@@ -5,7 +5,8 @@
     "scripts": {
         "prepare": "node -e \"if (!process.env.CI && !process.env.VERCEL) { const { spawnSync } = require('child_process'); const result = spawnSync('husky', ['install'], { stdio: 'inherit' }); process.exit(result.status ?? 0); }\"",
         "pretty": "prettier --write .",
-        "vercel-build": "npm run web:build && rm -rf .vercel/output && mkdir -p .vercel && cp -R packages/web/.vercel/output .vercel/output",
+        "build": "npm run common:build && npm run server:build && npm run web:build",
+        "vercel-build": "npm run build",
         "common:watch": "npm run watch -w packages/common",
         "common:build": "npm run build -w packages/common",
         "common:check": "npm run check -w packages/common",

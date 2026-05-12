@@ -14,18 +14,16 @@ const graphql_1 = require("graphql");
 const utils_1 = require("../utils");
 const enums_1 = require("./enums");
 const Award_1 = require("./Award");
-const Event_1 = require("../../db/entities/Event");
+const Event_1 = require("../../db/schemas/Event");
 const common_1 = require("@ftc-scout/common");
 const TeamMatchParticipation_1 = require("./TeamMatchParticipation");
-const TeamMatchParticipation_2 = require("../../db/entities/TeamMatchParticipation");
+const TeamMatchParticipation_2 = require("../../db/schemas/TeamMatchParticipation");
 const Match_1 = require("./Match");
-const Match_2 = require("../../db/entities/Match");
+const Match_2 = require("../../db/schemas/Match");
 const TeamEventParticipation_1 = require("./TeamEventParticipation");
-const team_event_participation_1 = require("../../db/entities/dyn/team-event-participation");
+const team_event_participation_1 = require("../../db/schemas/dyn/team-event-participation");
 const Location_1 = require("../objs/Location");
 const luxon_1 = require("luxon");
-const data_source_1 = require("../../db/data-source");
-const typeorm_1 = require("typeorm");
 const pubsub_1 = require("./pubsub");
 const dyn_types_schema_1 = require("../dyn/dyn-types-schema");
 const tep_1 = require("../dyn/tep");
@@ -95,19 +93,20 @@ exports.EventGQL = new graphql_1.GraphQLObjectType({
         finished: Object.assign(Object.assign({}, common_1.BoolTy), { resolve: (e) => luxon_1.DateTime.fromISO(e.end, { zone: e.timezone }).endOf("day") < luxon_1.DateTime.now() }),
         relatedEvents: {
             type: (0, common_1.list)((0, common_1.nn)(exports.EventGQL)),
-            resolve: (e) => data_source_1.DATA_SOURCE.getRepository(Event_1.Event)
-                .createQueryBuilder("e")
-                .where("e.season = :season", { season: e.season })
-                .andWhere("e.code <> :code", { code: e.code })
-                .andWhere(new typeorm_1.Brackets((qb) => {
+            resolve: (e) => __awaiter(void 0, void 0, void 0, function* () {
+                const query = { season: e.season, code: { $ne: e.code } };
                 if (e.divisionCode) {
-                    qb.orWhere("e.code = :divCode", {
-                        divCode: e.divisionCode,
-                    }).orWhere("e.divisionCode = :divCode");
+                    query.$or = [
+                        { code: e.divisionCode },
+                        { divisionCode: e.divisionCode },
+                        { divisionCode: e.code }
+                    ];
                 }
-                qb.orWhere("e.divisionCode = :code");
-            }))
-                .getMany(),
+                else {
+                    query.divisionCode = e.code;
+                }
+                return Event_1.Event.find(query);
+            }),
         },
         awards: {
             type: (0, common_1.list)((0, common_1.nn)(Award_1.AwardGQL)),
@@ -131,7 +130,7 @@ exports.EventGQL = new graphql_1.GraphQLObjectType({
         hasMatches: Object.assign(Object.assign({}, common_1.BoolTy), { resolve: (e) => __awaiter(void 0, void 0, void 0, function* () {
                 return "hasMatches" in e
                     ? e.hasMatches
-                    : (yield data_source_1.DATA_SOURCE.getRepository(Event_1.Event)
+                    : (yield DATA_SOURCE.getRepository(Event_1.Event)
                         .createQueryBuilder("e")
                         .distinctOn(["code"])
                         .addSelect("coalesce(m.has_been_played, false)", "has_matches")
@@ -151,10 +150,7 @@ exports.EventGQL = new graphql_1.GraphQLObjectType({
                 if (event.published) {
                     return null;
                 }
-                let roster = yield team_event_participation_1.TeamEventParticipation[event.season].find({
-                    where: { season: event.season, eventCode: event.code },
-                    select: ["teamNumber"],
-                });
+                let roster = yield team_event_participation_1.TeamEventParticipation[event.season].find({ season: event.season, eventCode: event.code }, { select: ["teamNumber"] });
                 let teamNumbers = roster.map((r) => r.teamNumber);
                 if (!teamNumbers.length)
                     return [];
@@ -166,14 +162,11 @@ exports.EventGQL = new graphql_1.GraphQLObjectType({
                         : (_f = (_d = (_c = t.opr) === null || _c === void 0 ? void 0 : _c.totalPointsNp) !== null && _d !== void 0 ? _d : (_e = t.opr) === null || _e === void 0 ? void 0 : _e.totalPoints) !== null && _f !== void 0 ? _f : null;
                     return val == null ? null : +val;
                 };
-                let candidateStats = yield team_event_participation_1.TeamEventParticipation[event.season]
-                    .createQueryBuilder("t")
-                    .innerJoin(Event_1.Event, "e", "e.season = t.season AND e.code = t.eventCode")
-                    .where("t.teamNumber IN (:...teamNumbers)", { teamNumbers })
-                    .andWhere("NOT t.isRemote")
-                    .andWhere("t.hasStats")
-                    .andWhere("NOT e.modified_rules")
-                    .getMany();
+                let candidateStats = yield team_event_participation_1.TeamEventParticipation[event.season].find({
+                    teamNumber: { $in: teamNumbers },
+                    isRemote: false,
+                    hasStats: true,
+                });
                 let bestStats = new Map();
                 for (let row of candidateStats) {
                     let quick = getQuickOpr(row);
@@ -190,9 +183,9 @@ exports.EventGQL = new graphql_1.GraphQLObjectType({
                     }
                 }
                 let eventCodes = new Set(candidateStats.map((r) => r.eventCode));
-                let events = yield Event_1.Event.findBy({
+                let events = yield Event_1.Event.find({
                     season: event.season,
-                    code: (0, typeorm_1.In)([...eventCodes]),
+                    code: { $in: [...eventCodes] },
                 });
                 let eventMap = new Map(events.map((e) => [e.code, e]));
                 return teamNumbers.map((teamNumber) => {
@@ -229,7 +222,7 @@ exports.EventQueries = {
     eventByCode: {
         type: exports.EventGQL,
         args: { season: common_1.IntTy, code: common_1.StrTy },
-        resolve: (0, utils_1.dataLoaderResolverSingle)((_, a) => a, (keys) => Event_1.Event.find({ where: keys })),
+        resolve: (0, utils_1.dataLoaderResolverSingle)((_, a) => a, (keys) => Event_1.Event.find(keys)),
     },
     eventsSearch: {
         type: (0, common_1.list)((0, common_1.nn)(exports.EventGQL)),
@@ -244,31 +237,31 @@ exports.EventQueries = {
             searchText: (0, common_1.nullTy)(common_1.StrTy),
         },
         resolve: (_, { season, region, type, hasMatches, start, end, limit, searchText, }) => __awaiter(void 0, void 0, void 0, function* () {
-            let q = data_source_1.DATA_SOURCE.getRepository(Event_1.Event)
-                .createQueryBuilder("e")
-                .distinctOn(["code"])
-                .addSelect("coalesce(m.has_been_played, false)", "has_matches")
-                .where("season = :season", { season });
+            let query = { season };
             if (region && region != common_1.RegionOption.All) {
-                q.andWhere("region_code IN (:...regions)", { regions: (0, common_1.getRegionCodes)(region) });
+                query.regionCode = { $in: (0, common_1.getRegionCodes)(region) };
             }
             if (type && type != common_1.EventTypeOption.All) {
-                q.andWhere("type IN (:...types)", { types: (0, common_1.getEventTypes)(type) });
+                query.type = { $in: (0, common_1.getEventTypes)(type) };
             }
             if (start) {
-                q.andWhere('"start" >= :start', { start: start.toISOString().split("T")[0] });
+                query.start = { $gte: new Date(start.toISOString().split("T")[0]) };
             }
             if (end) {
-                q.andWhere('"end" <= :end', { end: end.toISOString().split("T")[0] });
+                query.end = { $lte: new Date(end.toISOString().split("T")[0]) };
             }
+            let options = {};
             if (limit && (!searchText || searchText.trim() == "")) {
-                q.limit(limit);
+                options.limit = limit;
             }
-            let { entities, raw } = yield q
-                .leftJoin(Match_2.Match, "m", "e.season = m.event_season AND e.code = m.event_code")
-                .getRawAndEntities();
-            for (let i = 0; i < entities.length; i++) {
-                entities[i].hasMatches = raw[i].has_matches;
+            let entities = yield Event_1.Event.find(query, {}, options);
+            for (let entity of entities) {
+                const match = yield Match_2.Match.findOne({
+                    eventSeason: entity.season,
+                    eventCode: entity.code,
+                    hasBeenPlayed: true,
+                });
+                entity.hasMatches = !!match;
             }
             if (hasMatches != null) {
                 entities = entities.filter((e) => e.hasMatches == hasMatches);

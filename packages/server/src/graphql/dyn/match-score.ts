@@ -1,7 +1,7 @@
 import { Alliance, DESCRIPTORS, Descriptor, IntTy, StrTy, nn, notEmpty } from "@ftc-scout/common";
 import { GraphQLFieldConfig, GraphQLNonNull, GraphQLObjectType } from "graphql";
 import { AllianceGQL } from "../resolvers/enums";
-import { MatchScore } from "../../db/entities/dyn/match-score";
+import { MatchScore } from "../../db/schemas/dyn/match-score";
 import { AnyObject } from "../../type-utils";
 
 export function makeMatchScoreTys(descriptor: Descriptor): GraphQLObjectType[] {

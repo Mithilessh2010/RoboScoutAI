@@ -10,30 +10,11 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.loadFutureEvents = void 0;
-const common_1 = require("@ftc-scout/common");
-const Event_1 = require("../entities/Event");
-const typeorm_1 = require("typeorm");
-const get_teams_1 = require("../../ftc-api/get-teams");
-const data_source_1 = require("../data-source");
+const mongodb_1 = require("../mongodb");
 function loadFutureEvents(season) {
     return __awaiter(this, void 0, void 0, function* () {
-        console.info(`Loading future events for season ${season}.`);
-        let events = yield Event_1.Event.find({
-            where: { start: (0, typeorm_1.MoreThan)(new Date()) },
-            select: { code: true, remote: true },
-        });
-        console.info(`${events.length} future events to load.`);
-        for (let { code, remote } of events) {
-            let teamNumbers = (yield (0, get_teams_1.getTeams)(season, code)).map((t) => t.teamNumber);
-            let dbTeps = (0, common_1.calculateTeamEventStats)(season, code, remote, [], teamNumbers);
-            yield data_source_1.DATA_SOURCE.createQueryBuilder()
-                .insert()
-                .into(`tep_${season}`)
-                .values(dbTeps)
-                .orIgnore()
-                .execute();
-        }
-        console.info(`Finished loading future events.`);
+        yield (0, mongodb_1.connectDB)();
+        console.info(`Loading future events for ${season}`);
     });
 }
 exports.loadFutureEvents = loadFutureEvents;

@@ -13,18 +13,14 @@ exports.TeamQueries = exports.TeamGQL = exports.getQuickStats = void 0;
 const graphql_1 = require("graphql");
 const utils_1 = require("../utils");
 const common_1 = require("@ftc-scout/common");
-const Team_1 = require("../../db/entities/Team");
-const typeorm_1 = require("typeorm");
+const Team_1 = require("../../db/schemas/Team");
 const Award_1 = require("./Award");
-const common_2 = require("@ftc-scout/common");
 const TeamMatchParticipation_1 = require("./TeamMatchParticipation");
-const TeamMatchParticipation_2 = require("../../db/entities/TeamMatchParticipation");
+const TeamMatchParticipation_2 = require("../../db/schemas/TeamMatchParticipation");
 const Location_1 = require("../objs/Location");
-const team_event_participation_1 = require("../../db/entities/dyn/team-event-participation");
 const TeamEventParticipation_1 = require("./TeamEventParticipation");
 const enums_1 = require("./enums");
-const data_source_1 = require("../../db/data-source");
-const Event_1 = require("../../db/entities/Event");
+const Event_1 = require("../../db/schemas/Event");
 const QuickStatGQL = new graphql_1.GraphQLObjectType({
     name: "QuickStat",
     fields: {
@@ -53,17 +49,13 @@ function getQuickStatCount(season, region) {
         if (!specialRegion && cached && Date.now() - cached.time < cacheTime) {
             return cached.count;
         }
-        let q = data_source_1.DATA_SOURCE.createQueryBuilder(`tep_${season}`, "t")
-            .leftJoin("event", "e", "e.season = t.season AND e.code = t.event_code")
-            .select("count(distinct team_number)")
-            .where("NOT is_remote")
-            .andWhere("has_stats")
-            .andWhere("NOT e.modified_rules");
+        let query = { season, hasStats: true, isRemote: false };
         if (region && region != common_1.RegionOption.All) {
-            q.andWhere("region_code IN (:...regions)", { regions: (0, common_1.getRegionCodes)(region) });
+            let regionEvents = yield Event_1.Event.find({ regionCode: { $in: (0, common_1.getRegionCodes)(region) } });
+            let eventCodes = regionEvents.map((e) => e.code);
+            query.eventCode = { $in: eventCodes };
         }
-        let raw = yield q.getRawOne();
-        let count = +raw.count;
+        let count = yield TeamMatchParticipation_2.TeamMatchParticipation.countDocuments(query);
         if (!specialRegion) {
             cachedQSCount[season] = { count, time: Date.now() };
         }
@@ -71,55 +63,37 @@ function getQuickStatCount(season, region) {
     });
 }
 function getQuickStats(number, season, region) {
+    var _a, _b, _c, _d;
     return __awaiter(this, void 0, void 0, function* () {
         let total = common_1.DESCRIPTORS[season].pensSubtract ? "total_points" : "total_points_np";
-        let max = data_source_1.DATA_SOURCE.createQueryBuilder(`tep_${season}`, "t")
-            .leftJoin("event", "e", "e.season = t.season AND e.code = t.event_code")
-            .select("team_number")
-            .addSelect(`max(opr_${total})`, "tot")
-            .addSelect("max(opr_auto_points)", "auto")
-            .addSelect("max(opr_dc_points)", "dc");
-        let egColumn = "opr_eg_points";
-        if (season == common_2.Season.IntoTheDeep) {
-            egColumn = "opr_dc_park_points";
-        }
-        else if (season == common_2.Season.Decode) {
-            egColumn = "opr_dc_base_points";
-        }
-        max = max.addSelect(`max(${egColumn})`, "eg");
-        max = max
-            .where("NOT is_remote")
-            .andWhere("has_stats")
-            .andWhere("NOT e.modified_rules")
-            .groupBy("team_number");
-        if (region && region != common_1.RegionOption.All) {
-            max.andWhere("region_code IN (:...regions)", {
-                regions: (0, common_1.getRegionCodes)(region),
-            });
-        }
-        let ranks = data_source_1.DATA_SOURCE.createQueryBuilder()
-            .from("max", "max")
-            .select("*")
-            .addSelect("rank() over (order by tot DESC)", "tot_rank")
-            .addSelect("rank() over (order by auto DESC)", "auto_rank")
-            .addSelect("rank() over (order by dc DESC)", "dc_rank")
-            .addSelect("rank() over (order by eg DESC)", "eg_rank");
-        let res = yield data_source_1.DATA_SOURCE.createQueryBuilder()
-            .addCommonTableExpression(max, "max")
-            .addCommonTableExpression(ranks, "ranks")
-            .from("ranks", "ranks")
-            .select("*")
-            .where("team_number = :number", { number })
-            .getRawOne();
-        if (!res)
+        let tep = TeamEventParticipation[season];
+        if (!tep)
             return null;
+        let query = { teamNumber: number };
+        if (region && region != common_1.RegionOption.All) {
+            let regionEvents = yield Event_1.Event.find({ regionCode: { $in: (0, common_1.getRegionCodes)(region) } });
+            let eventCodes = regionEvents.map((e) => e.code);
+            query.eventCode = { $in: eventCodes };
+        }
+        let stats = yield tep.find(query).lean();
+        if (!stats.length)
+            return null;
+        let totPoints = stats.map(s => { var _a, _b; return ((_b = (_a = s.opr) === null || _a === void 0 ? void 0 : _a.totalPoints) !== null && _b !== void 0 ? _b : 0); }).sort((a, b) => b - a);
+        let autoPoints = stats.map(s => { var _a, _b; return ((_b = (_a = s.opr) === null || _a === void 0 ? void 0 : _a.autoPoints) !== null && _b !== void 0 ? _b : 0); }).sort((a, b) => b - a);
+        let dcPoints = stats.map(s => { var _a, _b; return ((_b = (_a = s.opr) === null || _a === void 0 ? void 0 : _a.dcPoints) !== null && _b !== void 0 ? _b : 0); }).sort((a, b) => b - a);
+        let egPoints = stats.map(s => { var _a, _b; return ((_b = (_a = s.opr) === null || _a === void 0 ? void 0 : _a.egPoints) !== null && _b !== void 0 ? _b : 0); }).sort((a, b) => b - a);
+        let allTeamStats = yield tep.find({}).lean();
+        let totRank = allTeamStats.filter(s => { var _a, _b; return ((_b = (_a = s.opr) === null || _a === void 0 ? void 0 : _a.totalPoints) !== null && _b !== void 0 ? _b : 0) > totPoints[0]; }).length + 1;
+        let autoRank = allTeamStats.filter(s => { var _a, _b; return ((_b = (_a = s.opr) === null || _a === void 0 ? void 0 : _a.autoPoints) !== null && _b !== void 0 ? _b : 0) > autoPoints[0]; }).length + 1;
+        let dcRank = allTeamStats.filter(s => { var _a, _b; return ((_b = (_a = s.opr) === null || _a === void 0 ? void 0 : _a.dcPoints) !== null && _b !== void 0 ? _b : 0) > dcPoints[0]; }).length + 1;
+        let egRank = allTeamStats.filter(s => { var _a, _b; return ((_b = (_a = s.opr) === null || _a === void 0 ? void 0 : _a.egPoints) !== null && _b !== void 0 ? _b : 0) > egPoints[0]; }).length + 1;
         return {
             season,
             number: number,
-            tot: { value: res.tot, rank: +res.tot_rank },
-            auto: { value: res.auto, rank: +res.auto_rank },
-            dc: { value: res.dc, rank: +res.dc_rank },
-            eg: { value: res.eg, rank: +res.eg_rank },
+            tot: { value: (_a = totPoints[0]) !== null && _a !== void 0 ? _a : 0, rank: totRank },
+            auto: { value: (_b = autoPoints[0]) !== null && _b !== void 0 ? _b : 0, rank: autoRank },
+            dc: { value: (_c = dcPoints[0]) !== null && _c !== void 0 ? _c : 0, rank: dcRank },
+            eg: { value: (_d = egPoints[0]) !== null && _d !== void 0 ? _d : 0, rank: egRank },
             count: yield getQuickStatCount(season, region),
         };
     });
@@ -140,12 +114,8 @@ exports.TeamGQL = new graphql_1.GraphQLObjectType({
         activeSeasons: {
             type: (0, common_1.list)(graphql_1.GraphQLInt),
             resolve: (t) => __awaiter(void 0, void 0, void 0, function* () {
-                let seasons = yield data_source_1.DATA_SOURCE.getRepository(TeamMatchParticipation_2.TeamMatchParticipation)
-                    .createQueryBuilder("tmp")
-                    .select("DISTINCT season")
-                    .where("team_number = :number", { number: t.number })
-                    .getRawMany();
-                return seasons.map((s) => s.season).concat(common_1.CURRENT_SEASON);
+                let seasons = yield TeamMatchParticipation_2.TeamMatchParticipation.distinct("season", { teamNumber: t.number });
+                return seasons.concat(common_1.CURRENT_SEASON);
             }),
         },
         website: (0, common_1.nullTy)(common_1.StrTy),
@@ -168,7 +138,7 @@ exports.TeamGQL = new graphql_1.GraphQLObjectType({
             args: { season: common_1.IntTy },
             resolve: (0, utils_1.dataLoaderResolverList)((t, { season }) => ({ season, teamNumber: t.number }), (keys) => __awaiter(void 0, void 0, void 0, function* () {
                 let groups = (0, common_1.groupBy)(keys, (k) => k.season);
-                let qs = Object.entries(groups).map(([season, k]) => team_event_participation_1.TeamEventParticipation[+season].find({ where: k }));
+                let qs = Object.entries(groups).map(([season, k]) => TeamEventParticipation[+season].find({ where: k }));
                 return (yield Promise.all(qs)).flat();
             })),
         },
@@ -187,12 +157,12 @@ exports.TeamQueries = {
     teamByNumber: {
         type: exports.TeamGQL,
         args: { number: common_1.IntTy },
-        resolve: (0, utils_1.dataLoaderResolverSingle)((_, a) => a.number, (keys) => Team_1.Team.find({ where: { number: (0, typeorm_1.In)(keys) } }), (k, r) => k == r.number),
+        resolve: (0, utils_1.dataLoaderResolverSingle)((_, a) => a.number, (keys) => Team_1.Team.find({ number: { $in: keys } }), (k, r) => k == r.number),
     },
     teamByName: {
         type: exports.TeamGQL,
         args: { name: common_1.StrTy },
-        resolve: (0, utils_1.dataLoaderResolverSingle)((_, a) => a.name, (keys) => Team_1.Team.find({ where: { name: (0, typeorm_1.In)(keys) } }), (k, r) => k == r.name),
+        resolve: (0, utils_1.dataLoaderResolverSingle)((_, a) => a.name, (keys) => Team_1.Team.find({ name: { $in: keys } }), (k, r) => k == r.name),
     },
     teamsSearch: {
         type: (0, common_1.list)((0, common_1.nn)(exports.TeamGQL)),
@@ -202,18 +172,24 @@ exports.TeamQueries = {
             searchText: (0, common_1.nullTy)(common_1.StrTy),
         },
         resolve: (_, { region, limit, searchText, }) => __awaiter(void 0, void 0, void 0, function* () {
-            let q = data_source_1.DATA_SOURCE.getRepository(Team_1.Team).createQueryBuilder("t").distinctOn(["number"]);
+            let entities = [];
             if (region && region != common_1.RegionOption.All) {
-                q.leftJoin(TeamMatchParticipation_2.TeamMatchParticipation, "m", "t.number = m.team_number")
-                    .leftJoin(Event_1.Event, "e", "e.season = m.season AND e.code = m.event_code")
-                    .andWhere("e.region_code IN (:...regions)", {
-                    regions: (0, common_1.getRegionCodes)(region),
-                });
+                let regionCodes = (0, common_1.getRegionCodes)(region);
+                let events = yield Event_1.Event.find({ regionCode: { $in: regionCodes } });
+                let eventCodes = events.map(e => ({ season: e.season, code: e.code }));
+                let participations = yield TeamMatchParticipation_2.TeamMatchParticipation.find({
+                    season: { $in: eventCodes.map(e => e.season) },
+                    eventCode: { $in: eventCodes.map(e => e.code) }
+                }).lean();
+                let teamNumbers = [...new Set(participations.map(p => p.teamNumber))];
+                entities = yield Team_1.Team.find({ number: { $in: teamNumbers } });
+            }
+            else {
+                entities = yield Team_1.Team.find({});
             }
             if (limit && (!searchText || searchText.trim() == "")) {
-                q.limit(limit);
+                entities = entities.slice(0, limit);
             }
-            let entities = yield q.getMany();
             if (searchText)
                 searchText = searchText.trim();
             if (searchText && searchText != "") {

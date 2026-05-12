@@ -1,6 +1,6 @@
 import { DESCRIPTORS, Descriptor, FloatTy, IntTy, nn, notEmpty } from "@ftc-scout/common";
 import { GraphQLFieldConfig, GraphQLObjectType } from "graphql";
-import { TeamEventParticipation } from "../../db/entities/dyn/team-event-participation";
+import { TeamEventParticipation } from "../../db/schemas/dyn/team-event-participation";
 
 export function makeTepTypes(descriptor: Descriptor): GraphQLObjectType[] {
     let l = [make(descriptor, false), descriptor.hasRemote ? make(descriptor, true) : null];

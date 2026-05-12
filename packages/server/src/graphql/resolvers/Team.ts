@@ -17,19 +17,16 @@ import {
     nullTy,
     CURRENT_SEASON,
 } from "@ftc-scout/common";
-import { Team } from "../../db/entities/Team";
-import { In } from "typeorm";
+import { Team } from "../../db/schemas/Team";
 import { AwardGQL, teamAwareAwardLoader } from "./Award";
-import { Award } from "../../db/entities/Award";
+import { Award } from "../../db/schemas/Award";
 import { Season } from "@ftc-scout/common";
 import { TeamMatchParticipationGQL } from "./TeamMatchParticipation";
-import { TeamMatchParticipation } from "../../db/entities/TeamMatchParticipation";
+import { TeamMatchParticipation } from "../../db/schemas/TeamMatchParticipation";
 import { LocationGQL } from "../objs/Location";
-import { TeamEventParticipation } from "../../db/entities/dyn/team-event-participation";
 import { TeamEventParticipationGQL } from "./TeamEventParticipation";
 import { RegionOptionGQL } from "./enums";
-import { DATA_SOURCE } from "../../db/data-source";
-import { Event } from "../../db/entities/Event";
+import { Event } from "../../db/schemas/Event";
 
 const QuickStatGQL = new GraphQLObjectType({
     name: "QuickStat",
@@ -56,88 +53,62 @@ let cacheTime = 1000 * 60 * 5; // 5 minutes
 
 async function getQuickStatCount(season: Season, region: RegionOption | null) {
     let specialRegion = region && region != RegionOption.All;
-
     let cached = cachedQSCount[season];
     if (!specialRegion && cached && Date.now() - cached.time < cacheTime) {
         return cached.count;
     }
 
-    let q = DATA_SOURCE.createQueryBuilder(`tep_${season}`, "t")
-        .leftJoin("event", "e", "e.season = t.season AND e.code = t.event_code")
-        .select("count(distinct team_number)")
-        .where("NOT is_remote")
-        .andWhere("has_stats")
-        .andWhere("NOT e.modified_rules");
-
+    let query: any = { season, hasStats: true, isRemote: false };
     if (region && region != RegionOption.All) {
-        q.andWhere("region_code IN (:...regions)", { regions: getRegionCodes(region) });
+        let regionEvents = await Event.find({ regionCode: { $in: getRegionCodes(region) } });
+        let eventCodes = regionEvents.map((e) => e.code);
+        query.eventCode = { $in: eventCodes };
     }
 
-    let raw = await q.getRawOne();
-    let count = +raw.count;
-
+    let count = await TeamMatchParticipation.countDocuments(query);
     if (!specialRegion) {
         cachedQSCount[season] = { count, time: Date.now() };
     }
-
     return count;
 }
 
 export async function getQuickStats(number: number, season: Season, region: RegionOption | null) {
     let total = DESCRIPTORS[season].pensSubtract ? "total_points" : "total_points_np";
-    let max = DATA_SOURCE.createQueryBuilder(`tep_${season}`, "t")
-        .leftJoin("event", "e", "e.season = t.season AND e.code = t.event_code")
-        .select("team_number")
-        .addSelect(`max(opr_${total})`, "tot")
-        .addSelect("max(opr_auto_points)", "auto")
-        .addSelect("max(opr_dc_points)", "dc");
+    // Note: For Mongoose, we need a simplified implementation
+    // Get all stats for the team in this season
+    let tep = TeamEventParticipation[season];
+    if (!tep) return null;
 
-    // HELP: Season Specific
-    let egColumn = "opr_eg_points";
-    if (season == Season.IntoTheDeep) {
-        egColumn = "opr_dc_park_points";
-    } else if (season == Season.Decode) {
-        egColumn = "opr_dc_base_points";
-    }
-    max = max.addSelect(`max(${egColumn})`, "eg");
-
-    max = max
-        .where("NOT is_remote")
-        .andWhere("has_stats")
-        .andWhere("NOT e.modified_rules")
-        .groupBy("team_number");
-
+    let query: any = { teamNumber: number };
     if (region && region != RegionOption.All) {
-        max.andWhere("region_code IN (:...regions)", {
-            regions: getRegionCodes(region),
-        });
+        let regionEvents = await Event.find({ regionCode: { $in: getRegionCodes(region) } });
+        let eventCodes = regionEvents.map((e) => e.code);
+        query.eventCode = { $in: eventCodes };
     }
 
-    let ranks = DATA_SOURCE.createQueryBuilder()
-        .from("max", "max")
-        .select("*")
-        .addSelect("rank() over (order by tot DESC)", "tot_rank")
-        .addSelect("rank() over (order by auto DESC)", "auto_rank")
-        .addSelect("rank() over (order by dc DESC)", "dc_rank")
-        .addSelect("rank() over (order by eg DESC)", "eg_rank");
+    let stats = await tep.find(query).lean();
+    if (!stats.length) return null;
 
-    let res = await DATA_SOURCE.createQueryBuilder()
-        .addCommonTableExpression(max, "max")
-        .addCommonTableExpression(ranks, "ranks")
-        .from("ranks", "ranks")
-        .select("*")
-        .where("team_number = :number", { number })
-        .getRawOne();
+    // Calculate max values
+    let totPoints = stats.map(s => (s.opr?.totalPoints ?? 0)).sort((a, b) => b - a);
+    let autoPoints = stats.map(s => (s.opr?.autoPoints ?? 0)).sort((a, b) => b - a);
+    let dcPoints = stats.map(s => (s.opr?.dcPoints ?? 0)).sort((a, b) => b - a);
+    let egPoints = stats.map(s => (s.opr?.egPoints ?? 0)).sort((a, b) => b - a);
 
-    if (!res) return null;
+    // Get rank by counting how many teams have higher value
+    let allTeamStats = await tep.find({}).lean();
+    let totRank = allTeamStats.filter(s => (s.opr?.totalPoints ?? 0) > totPoints[0]).length + 1;
+    let autoRank = allTeamStats.filter(s => (s.opr?.autoPoints ?? 0) > autoPoints[0]).length + 1;
+    let dcRank = allTeamStats.filter(s => (s.opr?.dcPoints ?? 0) > dcPoints[0]).length + 1;
+    let egRank = allTeamStats.filter(s => (s.opr?.egPoints ?? 0) > egPoints[0]).length + 1;
 
     return {
         season,
         number: number,
-        tot: { value: res.tot, rank: +res.tot_rank },
-        auto: { value: res.auto, rank: +res.auto_rank },
-        dc: { value: res.dc, rank: +res.dc_rank },
-        eg: { value: res.eg, rank: +res.eg_rank },
+        tot: { value: totPoints[0] ?? 0, rank: totRank },
+        auto: { value: autoPoints[0] ?? 0, rank: autoRank },
+        dc: { value: dcPoints[0] ?? 0, rank: dcRank },
+        eg: { value: egPoints[0] ?? 0, rank: egRank },
         count: await getQuickStatCount(season, region),
     };
 }
@@ -157,12 +128,8 @@ export const TeamGQL: GraphQLObjectType = new GraphQLObjectType({
         activeSeasons: {
             type: list(GraphQLInt),
             resolve: async (t) => {
-                let seasons = await DATA_SOURCE.getRepository(TeamMatchParticipation)
-                    .createQueryBuilder("tmp")
-                    .select("DISTINCT season")
-                    .where("team_number = :number", { number: t.number })
-                    .getRawMany();
-                return seasons.map((s) => s.season).concat(CURRENT_SEASON);
+                let seasons = await TeamMatchParticipation.distinct("season", { teamNumber: t.number });
+                return seasons.concat(CURRENT_SEASON);
             },
         },
         website: nullTy(StrTy),
@@ -241,7 +208,7 @@ export const TeamQueries: Record<string, GraphQLFieldConfig<any, any>> = {
         args: { number: IntTy },
         resolve: dataLoaderResolverSingle<{}, Team, number, { number: number }>(
             (_, a) => a.number,
-            (keys) => Team.find({ where: { number: In(keys) } }),
+            (keys) => Team.find({ number: { $in: keys } }),
             (k, r) => k == r.number
         ),
     },
@@ -250,7 +217,7 @@ export const TeamQueries: Record<string, GraphQLFieldConfig<any, any>> = {
         args: { name: StrTy },
         resolve: dataLoaderResolverSingle<{}, Team, string, { name: string }>(
             (_, a) => a.name,
-            (keys) => Team.find({ where: { name: In(keys) } }),
+            (keys) => Team.find({ name: { $in: keys } }),
             (k, r) => k == r.name
         ),
     },
@@ -274,21 +241,26 @@ export const TeamQueries: Record<string, GraphQLFieldConfig<any, any>> = {
                 searchText: string | null;
             }
         ) => {
-            let q = DATA_SOURCE.getRepository(Team).createQueryBuilder("t").distinctOn(["number"]);
-
+            let entities: any[] = [];
             if (region && region != RegionOption.All) {
-                q.leftJoin(TeamMatchParticipation, "m", "t.number = m.team_number")
-                    .leftJoin(Event, "e", "e.season = m.season AND e.code = m.event_code")
-                    .andWhere("e.region_code IN (:...regions)", {
-                        regions: getRegionCodes(region),
-                    });
+                let regionCodes = getRegionCodes(region);
+                let events = await Event.find({ regionCode: { $in: regionCodes } });
+                let eventCodes = events.map(e => ({ season: e.season, code: e.code }));
+                
+                let participations = await TeamMatchParticipation.find({
+                    season: { $in: eventCodes.map(e => e.season) },
+                    eventCode: { $in: eventCodes.map(e => e.code) }
+                }).lean();
+                
+                let teamNumbers = [...new Set(participations.map(p => p.teamNumber))];
+                entities = await Team.find({ number: { $in: teamNumbers } });
+            } else {
+                entities = await Team.find({});
             }
 
             if (limit && (!searchText || searchText.trim() == "")) {
-                q.limit(limit);
+                entities = entities.slice(0, limit);
             }
-
-            let entities = await q.getMany();
 
             if (searchText) searchText = searchText.trim();
             if (searchText && searchText != "") {

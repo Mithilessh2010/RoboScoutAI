@@ -1,2 +1,1 @@
-import { DataSource } from "typeorm";
-export declare const DATA_SOURCE: DataSource;
+export declare const DATA_SOURCE: any;
