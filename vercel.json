@@ -2,7 +2,13 @@
     "buildCommand": "npm install && npm run build",
     "installCommand": "npm install",
     "env": {
-        "DATABASE_URL": "@mongodb_url"
+        "DATABASE_URL": "@mongodb_url",
+        "FTC_API_KEY": "@ftc_api_key",
+        "FTC_EVENTS_USERNAME": "@ftc_events_username",
+        "FTC_EVENTS_AUTH_KEY": "@ftc_events_auth_key",
+        "PUBLIC_SERVER_ORIGIN": "api.ftcscout.org",
+        "PUBLIC_FRONTEND_CODE": "production-frontend-code",
+        "FTC_EVENTS_API_BASE_URL": "https://ftc-api.firstinspires.org/v2.0"
     },
     "functions": {
         "api/**/*.ts": {

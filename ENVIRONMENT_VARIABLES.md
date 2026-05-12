@@ -49,6 +49,19 @@ These are used by `packages/server` when running the database-backed GraphQL/API
 
 Set `DATABASE_URL` to your MongoDB Atlas connection string and keep `FTC_API_KEY` as a secret environment variable.
 
+Vercel secret names to create (recommended):
+
+- `mongodb_url` (value: your MongoDB Atlas connection string) — used by `DATABASE_URL` in Vercel.
+- `ftc_api_key` (value: Base64 of `username:authorization-key`) — used by `FTC_API_KEY` in Vercel.
+- `ftc_events_username` (value: FTC Events API username) — used by web proxy routes.
+- `ftc_events_auth_key` (value: FTC Events API authorization key) — used by web proxy routes.
+
+Recommended public/prod values (can be set in Vercel env or rely on defaults in `vercel.json`):
+
+- `PUBLIC_SERVER_ORIGIN` = `api.ftcscout.org`
+- `PUBLIC_FRONTEND_CODE` = `production-frontend-code`
+- `FTC_EVENTS_API_BASE_URL` = `https://ftc-api.firstinspires.org/v2.0`
+
 ## Local Setup
 
 1. Copy `packages/web/.env.example` to `packages/web/.env.local`.
