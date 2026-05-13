@@ -1,6 +1,7 @@
 {
-    "buildCommand": "npm install && npm run build",
+    "buildCommand": "npm install && npm run build && rm -rf .vercel/output && mkdir -p .vercel && cp -R packages/web/.vercel/output .vercel/output",
     "installCommand": "npm install",
+    "outputDirectory": ".vercel/output",
     "env": {
         "DATABASE_URL": "mongodb+srv://ftcscout:roboscout@roboscout.z2u1tyy.mongodb.net/?appName=roboscout",
         "FTC_API_KEY": "c3VwZXJpb3JjYXZlOkI0RUEwMDZGLURERDAtNEJFRC1CNjM2LTY3NTYwRTAyMEZEMQ==",
