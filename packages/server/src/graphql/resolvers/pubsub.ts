@@ -1,4 +1,6 @@
 // @ts-nocheck
+
+// @ts-nocheck
 import { Season } from "@ftc-scout/common";
 import { PubSub } from "graphql-subscriptions";
 

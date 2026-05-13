@@ -1,4 +1,6 @@
 // @ts-nocheck
+
+// @ts-nocheck
 import { Alliance, DESCRIPTORS, Descriptor, IntTy, StrTy, nn, notEmpty } from "@ftc-scout/common";
 import { GraphQLFieldConfig, GraphQLNonNull, GraphQLObjectType } from "graphql";
 import { AllianceGQL } from "../resolvers/enums";
