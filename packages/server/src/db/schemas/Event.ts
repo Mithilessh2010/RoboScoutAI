@@ -80,6 +80,16 @@ eventSchema.index({ season: 1, code: 1 }, { unique: true });
 export const Event = mongoose.model<IEvent>("Event", eventSchema);
 
 export function eventFromApi(api: EventFtcApi): Omit<IEvent, keyof Document> | null {
+    const typeSource = api.typeName ?? api.type;
+    if (!typeSource) {
+        return null;
+    }
+
+    const type = eventTypeFromFtcApi(typeSource);
+    if (!type) {
+        return null;
+    }
+
     return {
         season: api.season,
         code: api.code,
@@ -89,7 +99,7 @@ export function eventFromApi(api: EventFtcApi): Omit<IEvent, keyof Document> | n
         hybrid: api.hybrid,
         fieldCount: api.fieldCount,
         published: api.published,
-        type: eventTypeFromFtcApi(api.eventType),
+        type,
         regionCode: api.regionCode ?? null,
         leagueCode: api.leagueCode ?? null,
         districtCode: api.districtCode ?? null,
@@ -99,11 +109,11 @@ export function eventFromApi(api: EventFtcApi): Omit<IEvent, keyof Document> | n
         state: api.state,
         city: api.city,
         website: api.website ?? null,
-        liveStreamURL: api.liveStreamURL ?? null,
+        liveStreamURL: api.liveStreamUrl ?? null,
         webcasts: api.webcasts ?? [],
         timezone: api.timezone,
-        start: new Date(api.start),
-        end: new Date(api.end),
-        modifiedRules: api.modifiedRules,
+        start: new Date(api.dateStart),
+        end: new Date(api.dateEnd),
+        modifiedRules: false,
     };
 }

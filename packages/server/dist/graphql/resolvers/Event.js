@@ -116,7 +116,7 @@ exports.EventGQL = new graphql_1.GraphQLObjectType({
             type: (0, common_1.list)((0, common_1.nn)(TeamEventParticipation_1.TeamEventParticipationGQL)),
             resolve: (0, utils_1.dataLoaderResolverList)((event) => ({ season: event.season, eventCode: event.code }), (keys) => __awaiter(void 0, void 0, void 0, function* () {
                 let groups = (0, common_1.groupBy)(keys, (k) => k.season);
-                let qs = Object.entries(groups).map(([season, k]) => team_event_participation_1.TeamEventParticipation[+season].find({ where: k }));
+                let qs = Object.entries(groups).map(([season, k]) => team_event_participation_1.TeamEventParticipation[+season].find({ $or: k }));
                 return (yield Promise.all(qs)).flat();
             })),
         },
@@ -125,19 +125,12 @@ exports.EventGQL = new graphql_1.GraphQLObjectType({
             args: { teamNumber: (0, common_1.nullTy)(common_1.IntTy) },
             resolve: (0, utils_1.dataLoaderResolverList)((e, { teamNumber }) => teamNumber != null
                 ? { season: e.season, eventCode: e.code, teamNumber }
-                : { season: e.season, eventCode: e.code }, (keys) => TeamMatchParticipation_2.TeamMatchParticipation.find({ where: keys })),
+                : { season: e.season, eventCode: e.code }, (keys) => TeamMatchParticipation_2.TeamMatchParticipation.find({ $or: keys })),
         },
         hasMatches: Object.assign(Object.assign({}, common_1.BoolTy), { resolve: (e) => __awaiter(void 0, void 0, void 0, function* () {
                 return "hasMatches" in e
                     ? e.hasMatches
-                    : (yield DATA_SOURCE.getRepository(Event_1.Event)
-                        .createQueryBuilder("e")
-                        .distinctOn(["code"])
-                        .addSelect("coalesce(m.has_been_played, false)", "has_matches")
-                        .leftJoin(Match_2.Match, "m", "e.season = m.event_season AND e.code = m.event_code")
-                        .where("season = :season", { season: e.season })
-                        .andWhere("code = :code", { code: e.code })
-                        .getRawOne()).has_matches;
+                    : (yield Match_2.Match.countDocuments({ eventSeason: e.season, eventCode: e.code })) > 0;
             }) }),
         matches: {
             type: (0, common_1.list)((0, common_1.nn)(Match_1.MatchGQL)),
@@ -150,7 +143,7 @@ exports.EventGQL = new graphql_1.GraphQLObjectType({
                 if (event.published) {
                     return null;
                 }
-                let roster = yield team_event_participation_1.TeamEventParticipation[event.season].find({ season: event.season, eventCode: event.code }, { select: ["teamNumber"] });
+                let roster = yield team_event_participation_1.TeamEventParticipation[event.season].find({ season: event.season, eventCode: event.code }, { teamNumber: 1 });
                 let teamNumbers = roster.map((r) => r.teamNumber);
                 if (!teamNumbers.length)
                     return [];

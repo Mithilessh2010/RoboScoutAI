@@ -10,14 +10,14 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.setupRest = void 0;
-const Team_1 = require("../db/entities/Team");
-const team_event_participation_1 = require("../db/entities/dyn/team-event-participation");
+const Team_1 = require("../db/schemas/Team");
+const team_event_participation_1 = require("../db/schemas/dyn/team-event-participation");
 const common_1 = require("@ftc-scout/common");
-const Award_1 = require("../db/entities/Award");
-const TeamMatchParticipation_1 = require("../db/entities/TeamMatchParticipation");
-const Event_1 = require("../db/entities/Event");
+const Award_1 = require("../db/schemas/Award");
+const TeamMatchParticipation_1 = require("../db/schemas/TeamMatchParticipation");
+const Event_1 = require("../db/schemas/Event");
 const luxon_1 = require("luxon");
-const Match_1 = require("../db/entities/Match");
+const Match_1 = require("../db/schemas/Match");
 const match_score_1 = require("../graphql/dyn/match-score");
 const Team_2 = require("../graphql/resolvers/Team");
 const tep_1 = require("../graphql/dyn/tep");
@@ -148,7 +148,7 @@ function watchRoomMessageCreate(req, res) {
 function teamByNumber(req, res) {
     return __awaiter(this, void 0, void 0, function* () {
         let number = +req.params.number;
-        let team = yield Team_1.Team.findOneBy({ number });
+        let team = yield Team_1.Team.findOne({ number });
         if (!team) {
             res.status(404).send(`No team with number ${number}.`);
             return;
@@ -158,7 +158,7 @@ function teamByNumber(req, res) {
 }
 function getTeps(season, findOptions) {
     return __awaiter(this, void 0, void 0, function* () {
-        let participations = yield team_event_participation_1.TeamEventParticipation[season].findBy(findOptions);
+        let participations = yield team_event_participation_1.TeamEventParticipation[season].find(findOptions);
         let results = [];
         for (let p of participations) {
             if (p.hasStats) {
@@ -260,18 +260,20 @@ function teamSearch(req, res) {
             res.status(400).send(`Invalid limit ${limit}.`);
             return;
         }
-        let q = DATA_SOURCE.getRepository(Team_1.Team).createQueryBuilder("t").distinctOn(["number"]);
+        let entities = yield Team_1.Team.find();
         if (region && region != common_1.RegionOption.All) {
-            q.leftJoin(TeamMatchParticipation_1.TeamMatchParticipation, "m", "t.number = m.team_number")
-                .leftJoin(Event_1.Event, "e", "e.season = m.season AND e.code = m.event_code")
-                .andWhere("e.region_code IN (:...regions)", {
-                regions: (0, common_1.getRegionCodes)(region),
-            });
+            let regionSet = new Set((0, common_1.getRegionCodes)(region));
+            let events = yield Event_1.Event.find();
+            let allowedEvents = new Set(events.filter((event) => event.regionCode != null && regionSet.has(event.regionCode)).map((event) => `${event.season}:${event.code}`));
+            let participations = yield TeamMatchParticipation_1.TeamMatchParticipation.find();
+            let allowedTeams = new Set(participations
+                .filter((participation) => allowedEvents.has(`${participation.season}:${participation.eventCode}`))
+                .map((participation) => participation.teamNumber));
+            entities = entities.filter((team) => allowedTeams.has(team.number));
         }
         if (limit && (!searchText || searchText.trim() == "")) {
-            q.limit(+limit);
+            entities = entities.slice(0, +limit);
         }
-        let entities = yield q.getMany();
         if (searchText)
             searchText = searchText.trim();
         if (searchText && searchText != "") {
@@ -296,7 +298,7 @@ function eventByCode(req, res) {
             res.status(400).send(`Invalid season ${season}.`);
             return;
         }
-        let event = yield Event_1.Event.findOneBy({ season, code });
+        let event = yield Event_1.Event.findOne({ season, code });
         if (!event) {
             res.status(404).send(`No event in season ${season} with code ${code}.`);
             return;
@@ -313,18 +315,12 @@ function eventMatches(req, res) {
             res.status(400).send(`Invalid season ${season}.`);
             return;
         }
-        let event = yield Event_1.Event.findOneBy({ season, code });
+        let event = yield Event_1.Event.findOne({ season, code });
         if (!event) {
             res.status(404).send(`No event in season ${season} with code ${code}.`);
             return;
         }
-        let matches = yield DATA_SOURCE.getRepository(Match_1.Match)
-            .createQueryBuilder("m")
-            .where("m.event_season = :season", { season })
-            .andWhere("m.event_code = :code", { code })
-            .leftJoinAndMapMany("m.scores", `match_score_${season}`, "ms", "m.event_season = ms.season AND m.event_code = ms.event_code AND m.id = ms.match_id")
-            .leftJoinAndMapMany("m.teams", "team_match_participation", "tmp", "m.event_season = tmp.season AND m.event_code = tmp.event_code AND m.id = tmp.match_id")
-            .getMany();
+        let matches = yield Match_1.Match.find({ eventSeason: season, eventCode: code });
         for (let m of matches) {
             m.scores = (0, match_score_1.frontendMSFromDB)(m.scores);
             if (m.scores)
@@ -394,40 +390,33 @@ function eventSearch(req, res) {
             res.status(400).send(`Invalid limit ${limit}.`);
             return;
         }
-        let q = DATA_SOURCE.getRepository(Event_1.Event)
-            .createQueryBuilder("e")
-            .distinctOn(["code"])
-            .addSelect("coalesce(m.has_been_played, false)", "has_matches")
-            .where("season = :season", { season });
+        let entities = yield Event_1.Event.find({ season });
         if (region && region != common_1.RegionOption.All) {
-            q.andWhere("region_code IN (:...regions)", { regions: (0, common_1.getRegionCodes)(region) });
+            let regionSet = new Set((0, common_1.getRegionCodes)(region));
+            entities = entities.filter((event) => event.regionCode != null && regionSet.has(event.regionCode));
         }
         if (type && type != common_1.EventTypeOption.All) {
-            q.andWhere("type IN (:...types)", { types: (0, common_1.getEventTypes)(type) });
+            let typeSet = new Set((0, common_1.getEventTypes)(type));
+            entities = entities.filter((event) => typeSet.has(event.type));
         }
         if (start) {
-            let s = new Date(start);
-            q.andWhere('"start" >= :start', { start: s.toISOString().split("T")[0] });
+            let startDate = new Date(start).toISOString().split("T")[0];
+            entities = entities.filter((event) => new Date(event.start).toISOString().split("T")[0] >= startDate);
         }
         if (end) {
-            let e = new Date(end);
-            q.andWhere('"end" <= :end', { end: e.toISOString().split("T")[0] });
-        }
-        if (limit && (!searchText || searchText.trim() == "")) {
-            q.limit(+limit);
-        }
-        let { entities, raw } = yield q
-            .leftJoin(Match_1.Match, "m", "e.season = m.event_season AND e.code = m.event_code")
-            .getRawAndEntities();
-        for (let i = 0; i < entities.length; i++) {
-            entities[i].hasMatches = raw[i].has_matches;
+            let endDate = new Date(end).toISOString().split("T")[0];
+            entities = entities.filter((event) => new Date(event.end).toISOString().split("T")[0] <= endDate);
         }
         if (hasMatches != null) {
-            entities = entities.filter((e) => e.hasMatches == (hasMatches == "true"));
+            let eventCodesWithMatches = new Set((yield Match_1.Match.find({ eventSeason: season }).distinct("eventCode")));
+            entities = entities.filter((event) => eventCodesWithMatches.has(event.code) == (hasMatches == "true"));
         }
         if (searchText && searchText.trim() != "") {
             let res = (0, common_1.fuzzySearch)(entities, searchText, limit != undefined ? +limit : undefined, "name", true);
             entities = res.map((d) => d.document);
+        }
+        if (limit && (!searchText || searchText.trim() == "")) {
+            entities = entities.slice(0, +limit);
         }
         res.send(entities);
     });
@@ -441,7 +430,7 @@ function eventPreview(req, res) {
             res.status(400).send(`Invalid season ${season}.`);
             return;
         }
-        let event = yield Event_1.Event.findOneBy({ season, code });
+        let event = yield Event_1.Event.findOne({ season, code });
         if (!event) {
             res.status(404).send(`No event in season ${season} with code ${code}.`);
             return;
@@ -450,10 +439,7 @@ function eventPreview(req, res) {
             res.status(204).send(`Event ${code} in season ${season} has already finished.`);
             return;
         }
-        let roster = yield team_event_participation_1.TeamEventParticipation[event.season].find({
-            where: { season: event.season, eventCode: event.code },
-            select: ["teamNumber"],
-        });
+        let roster = yield team_event_participation_1.TeamEventParticipation[event.season].find({ season: event.season, eventCode: event.code }, { teamNumber: 1 });
         let teamNumbers = roster.map((r) => r.teamNumber);
         if (!teamNumbers.length) {
             res.status(404).send(`No teams found for event ${event.code} in season ${event.season}.`);
@@ -467,14 +453,12 @@ function eventPreview(req, res) {
                 : (_f = (_d = (_c = t.opr) === null || _c === void 0 ? void 0 : _c.totalPointsNp) !== null && _d !== void 0 ? _d : (_e = t.opr) === null || _e === void 0 ? void 0 : _e.totalPoints) !== null && _f !== void 0 ? _f : null;
             return val == null ? null : +val;
         };
-        let candidateStats = yield team_event_participation_1.TeamEventParticipation[event.season]
-            .createQueryBuilder("t")
-            .innerJoin(Event_1.Event, "e", "e.season = t.season AND e.code = t.eventCode")
-            .where("t.teamNumber IN (:...teamNumbers)", { teamNumbers })
-            .andWhere("NOT t.isRemote")
-            .andWhere("t.hasStats")
-            .andWhere("NOT e.modified_rules")
-            .getMany();
+        let candidateStats = yield team_event_participation_1.TeamEventParticipation[event.season].find({
+            teamNumber: { $in: teamNumbers },
+            isRemote: false,
+            hasStats: true,
+            season: event.season,
+        });
         let bestStats = new Map();
         for (let row of candidateStats) {
             let quick = getQuickOpr(row);
@@ -491,9 +475,9 @@ function eventPreview(req, res) {
             }
         }
         let eventCodes = new Set(candidateStats.map((r) => r.eventCode));
-        let events = yield Event_1.Event.findBy({
+        let events = yield Event_1.Event.find({
             season: event.season,
-            code: In([...eventCodes]),
+            code: { $in: [...eventCodes] },
         });
         let eventMap = new Map(events.map((e) => [e.code, e]));
         res.send(teamNumbers.map((teamNumber) => {

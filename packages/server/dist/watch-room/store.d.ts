@@ -1,0 +1,15 @@
+import type { CreateWatchRoomInput, WatchLayoutPreference, WatchPlaybackState, WatchRoom, WatchRoomMessage, WatchRoomSummary, WatchStream } from "./types";
+export declare function listWatchRooms(): Promise<WatchRoomSummary[]>;
+export declare function getWatchRoom(roomId: string): Promise<WatchRoom | null>;
+export declare function createWatchRoom(input: CreateWatchRoomInput): Promise<WatchRoom>;
+export declare function saveWatchRoom(room: WatchRoom): Promise<WatchRoom>;
+export declare function mutateWatchRoom(roomId: string, updater: (room: WatchRoom) => WatchRoom | Promise<WatchRoom>): Promise<WatchRoom | null>;
+export declare function deleteWatchRoom(roomId: string): Promise<void>;
+export declare function addWatchRoomMessage(roomId: string, senderParticipantId: string, senderName: string, message: string): Promise<WatchRoomMessage>;
+export declare function listWatchRoomMessages(roomId: string, limit?: number): Promise<WatchRoomMessage[]>;
+export declare function upsertRoomParticipant(room: WatchRoom, participantId: string, displayName: string): WatchRoom;
+export declare function removeRoomParticipant(room: WatchRoom, participantId: string): WatchRoom;
+export declare function setPlaybackState(room: WatchRoom, nextState: Partial<WatchPlaybackState>): WatchRoom;
+export declare function setRoomStreams(room: WatchRoom, streams: WatchStream[]): WatchRoom;
+export declare function setRoomLayout(room: WatchRoom, layoutPreference: WatchLayoutPreference, focusStreamId?: string | null): WatchRoom;
+export declare function toggleRoomMainStream(room: WatchRoom, streamId: string): WatchRoom;

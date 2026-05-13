@@ -3,10 +3,10 @@
  * Updated loader for MongoDB
  * Replaces packages/server/src/db/loaders/load-all-teams.ts
  */
-import { CURRENT_SEASON, Season, notEmpty } from "@ftc-scout/common";
+import { Season, notEmpty } from "@ftc-scout/common";
 import { getTeams } from "../../ftc-api/get-teams";
 import { Team, teamFromApi } from "../schemas/Team";
-import { DataHasBeenLoaded } from "../schemas/DataHasBeenLoaded";
+import { markDataLoaded } from "../schemas/DataHasBeenLoaded";
 
 export async function loadAllTeams(season: Season) {
     console.info(`Loading teams for season ${season}.`);
@@ -31,7 +31,7 @@ export async function loadAllTeams(season: Season) {
     }
 
     // Mark as loaded
-    await DataHasBeenLoaded.create({ season, teams: true }).save();
+    await markDataLoaded(season, "teams");
 
     console.info(`Finished loading teams.`);
 }

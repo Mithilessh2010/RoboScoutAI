@@ -49,15 +49,23 @@ exports.BestNameQueries = {
     getBestName: {
         type: exports.BestNameGQL,
         resolve: () => __awaiter(void 0, void 0, void 0, function* () {
-            let teams = yield Team_2.Team.find({}).limit(2);
             let teamCount = yield Team_2.Team.countDocuments({});
-            let randomIndices = [Math.floor(Math.random() * teamCount), Math.floor(Math.random() * teamCount)];
-            teams = yield Team_2.Team.find({}).skip(randomIndices[0]).limit(1).concat(yield Team_2.Team.find({}).skip(randomIndices[1]).limit(1));
-            let bestName = BestName_1.BestName.create({
+            if (teamCount < 2) {
+                throw new Error("Need at least two teams to create a BestName prompt.");
+            }
+            let randomIndices = [
+                Math.floor(Math.random() * teamCount),
+                Math.floor(Math.random() * teamCount),
+            ];
+            let teams = yield Promise.all(randomIndices.map((index) => Team_2.Team.findOne().skip(index)));
+            if (!teams[0] || !teams[1]) {
+                throw new Error("Failed to select two random teams.");
+            }
+            let bestName = yield BestName_1.BestName.create({
+                id: Date.now(),
                 team1: teams[0].number,
                 team2: teams[1].number,
             });
-            yield bestName.save();
             return {
                 id: bestName.id,
                 team1D: teams[0],
@@ -74,22 +82,28 @@ exports.BestNameMutations = {
             vote: common_1.IntTy,
         },
         resolve: (_, { id, vote }) => __awaiter(void 0, void 0, void 0, function* () {
-            yield BestName_1.BestName.updateOne({ id, $or: [{ team1: vote }, { team2: vote }] }, { $set: { vote } });
+            yield BestName_1.BestName.updateOne({ id }, { $set: { vote } });
             let teamCount = yield Team_2.Team.countDocuments({});
-            let randomIndices = [Math.floor(Math.random() * teamCount), Math.floor(Math.random() * teamCount)];
+            let randomIndices = [
+                Math.floor(Math.random() * teamCount),
+                Math.floor(Math.random() * teamCount),
+            ];
             let teams = yield Promise.all([
-                Team_2.Team.find({}).skip(randomIndices[0]).limit(1),
-                Team_2.Team.find({}).skip(randomIndices[1]).limit(1)
+                Team_2.Team.findOne().skip(randomIndices[0]),
+                Team_2.Team.findOne().skip(randomIndices[1]),
             ]);
-            let bestName = BestName_1.BestName.create({
-                team1: teams[0][0].number,
-                team2: teams[1][0].number,
+            if (!teams[0] || !teams[1]) {
+                throw new Error("Failed to select two random teams.");
+            }
+            let bestName = yield BestName_1.BestName.create({
+                id: Date.now(),
+                team1: teams[0].number,
+                team2: teams[1].number,
             });
-            yield bestName.save();
             return {
                 id: bestName.id,
-                team1D: teams[0][0],
-                team2D: teams[1][0],
+                team1D: teams[0],
+                team2D: teams[1],
             };
         }),
     },

@@ -10,8 +10,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.setupSiteMap = void 0;
-const Team_1 = require("../db/entities/Team");
-const Event_1 = require("../db/entities/Event");
+const Team_1 = require("../db/schemas/Team");
+const Event_1 = require("../db/schemas/Event");
 const common_1 = require("@ftc-scout/common");
 function setupSiteMap(app) {
     app.get("/sitemap.xml", sitemap);
@@ -27,7 +27,7 @@ function sitemap(_req, res) {
         let xmls = [];
         let teams = yield Team_1.Team.find();
         let events = yield Event_1.Event.find();
-        let seasons = yield common_1.ALL_SEASONS;
+        let seasons = common_1.ALL_SEASONS;
         for (const team of teams) {
             urls.push(`/teams/${team.number}`);
         }

@@ -11,13 +11,13 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.eventBanner = exports.setupBannerRoutes = void 0;
 const path_1 = require("path");
-const Team_1 = require("./db/entities/Team");
-const team_event_participation_1 = require("./db/entities/dyn/team-event-participation");
+const Team_1 = require("./db/schemas/Team");
+const team_event_participation_1 = require("./db/schemas/dyn/team-event-participation");
 const common_1 = require("@ftc-scout/common");
-const Event_1 = require("./db/entities/Event");
+const Event_1 = require("./db/schemas/Event");
 const canvas_1 = require("canvas");
 const promises_1 = require("fs/promises");
-const match_score_1 = require("./db/entities/dyn/match-score");
+const match_score_1 = require("./db/schemas/dyn/match-score");
 const luxon_1 = require("luxon");
 function sendBanner(res) {
     res.sendFile((0, path_1.resolve)("src/res/banner.png"));
@@ -44,17 +44,31 @@ exports.setupBannerRoutes = setupBannerRoutes;
 function teamBanner(number, res) {
     var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
-        let teamData = yield Team_1.Team.findOneBy({ number });
+        let teamData = yield Team_1.Team.findOne({ number });
         if (!teamData)
             return sendBanner(res);
         let pensSub = common_1.DESCRIPTORS[common_1.CURRENT_SEASON].pensSubtract;
-        let bestEvent = yield team_event_participation_1.TeamEventParticipation[common_1.CURRENT_SEASON].createQueryBuilder("tep")
-            .leftJoin(Event_1.Event, "e", "e.code = tep.event_code")
-            .where("tep.team_number = :number", { number })
-            .andWhere("NOT e.remote")
-            .orderBy(pensSub ? "opr_total_points" : "opr_total_points_np", "DESC")
-            .limit(1)
-            .getOne();
+        let bestEvent = yield team_event_participation_1.TeamEventParticipation[common_1.CURRENT_SEASON]
+            .aggregate([
+            { $match: { teamNumber: number, season: common_1.CURRENT_SEASON } },
+            {
+                $lookup: {
+                    from: Event_1.Event.collection.name,
+                    localField: "eventCode",
+                    foreignField: "code",
+                    as: "event",
+                },
+            },
+            { $unwind: "$event" },
+            { $match: { "event.remote": false } },
+            {
+                $sort: {
+                    [pensSub ? "oprTotalPoints" : "totalPointsNp"]: -1,
+                },
+            },
+            { $limit: 1 },
+        ])
+            .then((rows) => { var _a; return (_a = rows[0]) !== null && _a !== void 0 ? _a : null; });
         let bestOpr = (_b = (_a = bestEvent === null || bestEvent === void 0 ? void 0 : bestEvent.opr) === null || _a === void 0 ? void 0 : _a[pensSub ? "totalPoints" : "totalPointsNp"]) !== null && _b !== void 0 ? _b : null;
         let bestOprStr = bestOpr != null ? Math.round(bestOpr * 100) / 100 + "" : "N/A";
         (0, canvas_1.registerFont)("src/res/Inter-SemiBold.ttf", { family: "InterSB" });
@@ -85,26 +99,19 @@ function teamBanner(number, res) {
     });
 }
 function eventBanner(season, code, res) {
-    var _a, _b;
+    var _a, _b, _c, _d;
     return __awaiter(this, void 0, void 0, function* () {
-        let eventData = yield Event_1.Event.findOneBy({ season, code });
+        let eventData = yield Event_1.Event.findOne({ season, code });
         if (!eventData)
             return sendBanner(res);
         let bestMatch = yield match_score_1.MatchScore[season]
-            .createQueryBuilder("ms")
-            .where("ms.event_code = :code", { code })
-            .orderBy("ms.total_points", "DESC")
-            .limit(1)
-            .getOne();
-        let bestScore = (_a = bestMatch === null || bestMatch === void 0 ? void 0 : bestMatch.totalPoints) !== null && _a !== void 0 ? _a : null;
+            .findOne({ season, eventCode: code })
+            .sort({ "scores.totalPoints": -1 });
+        let bestScore = (_c = (_b = (_a = bestMatch === null || bestMatch === void 0 ? void 0 : bestMatch.scores) === null || _a === void 0 ? void 0 : _a.totalPoints) !== null && _b !== void 0 ? _b : bestMatch === null || bestMatch === void 0 ? void 0 : bestMatch.totalPoints) !== null && _c !== void 0 ? _c : null;
         let winningTeam = yield team_event_participation_1.TeamEventParticipation[season]
-            .createQueryBuilder("tep")
-            .where("tep.event_code = :code", { code })
-            .andWhere("tep.rp IS NOT NULL")
-            .orderBy("tep.rp", "DESC")
-            .limit(1)
-            .getOne();
-        let winningTeamNum = (_b = winningTeam === null || winningTeam === void 0 ? void 0 : winningTeam.teamNumber) !== null && _b !== void 0 ? _b : null;
+            .findOne({ season, eventCode: code, rp: { $ne: null } })
+            .sort({ rp: -1 });
+        let winningTeamNum = (_d = winningTeam === null || winningTeam === void 0 ? void 0 : winningTeam.teamNumber) !== null && _d !== void 0 ? _d : null;
         (0, canvas_1.registerFont)("src/res/Inter-SemiBold.ttf", { family: "InterSB" });
         (0, canvas_1.registerFont)("src/res/Inter-Bold.ttf", { family: "InterB" });
         var img = (0, canvas_1.createCanvas)(1200, 628);

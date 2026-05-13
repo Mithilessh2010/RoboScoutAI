@@ -12,7 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getFromFtcApi = exports.throttledMakeRequest = void 0;
 const common_1 = require("@ftc-scout/common");
 const constants_1 = require("../constants");
-const FtcApiReq_1 = require("../db/entities/FtcApiReq");
+const FtcApiReq_1 = require("../db/schemas/FtcApiReq");
 function makeRequest(url) {
     return __awaiter(this, void 0, void 0, function* () {
         console.info(`Making a request to ${url}`);
@@ -39,7 +39,7 @@ function getFromFtcApi(path, params = {}) {
             .join("&");
         let url = `https://ftc-api.firstinspires.org/v2.0/${path}?${paramsString}`;
         if (constants_1.CACHE_REQ) {
-            let req = yield FtcApiReq_1.FtcApiReq.findOneBy({ url });
+            let req = yield FtcApiReq_1.FtcApiReq.findOne({ url });
             if (req) {
                 console.info(`Using cached resp for ${url}`);
                 return req.resp;
@@ -47,7 +47,7 @@ function getFromFtcApi(path, params = {}) {
         }
         let resp = yield (0, exports.throttledMakeRequest)(url);
         if (constants_1.CACHE_REQ && !!resp) {
-            yield FtcApiReq_1.FtcApiReq.create({ url, resp }).save();
+            yield FtcApiReq_1.FtcApiReq.create({ url, resp });
         }
         return resp;
     });
