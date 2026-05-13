@@ -1,0 +1,18 @@
+path: ../
+train: ../labeled-dataset/images/train
+val: ../labeled-dataset/images/val
+test: ../labeled-dataset/images/test
+nc: 12
+names:
+  0: robot_red
+  1: robot_blue
+  2: artifact_purple
+  3: artifact_green
+  4: goal_red
+  5: goal_blue
+  6: ramp_red
+  7: ramp_blue
+  8: base_red
+  9: base_blue
+  10: obelisk
+  11: field_boundary
