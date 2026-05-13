@@ -11,7 +11,7 @@ export function makeMatchScoreTys(descriptor: Descriptor): GraphQLObjectType[] {
     return [makeMSTysTrad(descriptor), makeMSTysRemote(descriptor)].filter(notEmpty);
 }
 
-export function frontendMSFromDB(ms: MatchScore[]): AnyObject | null {
+export function frontendMSFromDB(ms: any[]): any {
     function fields(s: MatchScore, remote: boolean): AnyObject {
         let ret: AnyObject = {};
         let descriptor = DESCRIPTORS[s.season];

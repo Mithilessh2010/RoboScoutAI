@@ -10,7 +10,7 @@ export function makeTepTypes(descriptor: Descriptor): GraphQLObjectType[] {
     return l.filter(notEmpty);
 }
 
-export function addTypename(tep: TeamEventParticipation): TeamEventParticipation {
+export function addTypename(tep: any): any {
     let suffix = DESCRIPTORS[tep.season].typeSuffix(tep.isRemote);
     let __typename = `TeamEventStats${tep.season}${suffix}`;
     return { ...tep, __typename };

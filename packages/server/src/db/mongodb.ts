@@ -4,7 +4,7 @@ import { DATABASE_URL, LOGGING } from "../constants";
 let isConnected = false;
 let connection: typeof mongoose | null = null;
 
-export async function connectDB() {
+export async function connectDB(): Promise<any> {
     if (isConnected && connection) {
         if (LOGGING) console.log("Using existing MongoDB connection");
         return connection;
@@ -36,7 +36,7 @@ export async function connectDB() {
     }
 }
 
-export async function disconnectDB() {
+export async function disconnectDB(): Promise<void> {
     if (connection) {
         await mongoose.disconnect();
         isConnected = false;
@@ -45,7 +45,7 @@ export async function disconnectDB() {
     }
 }
 
-export function getDBConnection() {
+export function getDBConnection(): any {
     if (!connection) {
         throw new Error("Database not connected. Call connectDB() first.");
     }

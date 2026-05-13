@@ -66,7 +66,7 @@ export function dataLoaderResolverList<Source, LookupResult, Key, Args = {}>(
     );
 }
 
-export function keyListToWhereClause<T extends AnyObject>(tableName: string, keys: T[]): Brackets {
+export function keyListToWhereClause<T extends AnyObject>(tableName: string, keys: T[]): any {
     let vIdx = 0;
 
     return new Brackets((qb) => {
