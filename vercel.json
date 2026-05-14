@@ -1,5 +1,5 @@
 {
-    "buildCommand": "npm install && npm run build && rm -rf .vercel/output && mkdir -p .vercel && cp -R packages/web/.vercel/output .vercel/output",
+    "buildCommand": "npm install && npm run build && rm -rf .vercel/output && mkdir -p .vercel && cp -R packages/web/.vercel/output .vercel/output && for f in .vercel/output/functions/*.func; do mkdir -p \"$f/services/video-processing/models/decode\" \"$f/scripts/decode\"; cp services/video-processing/models/decode/best.pt \"$f/services/video-processing/models/decode/best.pt\"; cp scripts/decode/predict_video_decode.py \"$f/scripts/decode/predict_video_decode.py\"; done",
     "installCommand": "npm install",
     "outputDirectory": ".vercel/output",
     "env": {
@@ -13,7 +13,8 @@
     },
     "functions": {
         "api/**/*.ts": {
-            "maxDuration": 30
+            "maxDuration": 60,
+            "includeFiles": "{scripts/decode/predict_video_decode.py,services/video-processing/models/decode/best.pt}"
         }
     }
 }

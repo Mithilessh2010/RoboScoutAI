@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import mongoose, { Schema } from "mongoose";
 import * as path from "path";
+import { fileURLToPath } from "url";
 import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
@@ -13,6 +14,12 @@ const MODEL_PATH = "services/video-processing/models/decode/best.pt";
 const PREDICT_SCRIPT = "scripts/decode/predict_video_decode.py";
 const PREDICTIONS_DIR = "decode-training/predictions";
 const UPLOADS_DIR = "decode-training/uploads";
+const BUNDLED_MODEL_PATH = fileURLToPath(
+    new URL("../../../../../services/video-processing/models/decode/best.pt", import.meta.url)
+);
+const BUNDLED_PREDICT_SCRIPT = fileURLToPath(
+    new URL("../../../../../scripts/decode/predict_video_decode.py", import.meta.url)
+);
 
 const autoscoreJobSchema = new Schema(
     {
@@ -136,6 +143,11 @@ export function resolveRepoPath(value: string) {
     return path.isAbsolute(value) ? value : path.join(repoRoot(), value);
 }
 
+function resolveBundledRuntimeFile(repoRelativePath: string, bundledPath: string) {
+    let repoPath = resolveRepoPath(repoRelativePath);
+    return existsSync(repoPath) ? repoPath : bundledPath;
+}
+
 export function serializeDoc(doc: any) {
     let plain = typeof doc?.toObject === "function" ? doc.toObject() : doc;
     return {
@@ -220,8 +232,8 @@ export async function runArtifactDetection(jobId: string) {
 
     let root = repoRoot();
     let sourcePath = resolveRepoPath(job.videoPath);
-    let modelPath = resolveRepoPath(MODEL_PATH);
-    let scriptPath = resolveRepoPath(PREDICT_SCRIPT);
+    let modelPath = resolveBundledRuntimeFile(MODEL_PATH, BUNDLED_MODEL_PATH);
+    let scriptPath = resolveBundledRuntimeFile(PREDICT_SCRIPT, BUNDLED_PREDICT_SCRIPT);
     let outputDir = resolveRepoPath(PREDICTIONS_DIR);
 
     await job.updateOne({
