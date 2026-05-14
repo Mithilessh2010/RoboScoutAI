@@ -21,7 +21,7 @@
         "web:check": "npm run check -w packages/web",
         "web:check:watch": "npm run check:watch -w packages/web",
         "web:gen": "npm run gen -w packages/web",
-        "web:vercel-build": "npm run web:build && rm -rf .vercel/output && mkdir -p .vercel && cp -R packages/web/.vercel/output .vercel/output",
+        "web:vercel-build": "npm run web:build && rm -rf .vercel/output && mkdir -p .vercel && cp -R packages/web/.vercel/output .vercel/output && node scripts/vercel-copy-autoscore-assets.js",
         "web:start": "npm run start -w packages/web",
         "check": "npm run common:check && npm run server:check && npm run web:check"
     },

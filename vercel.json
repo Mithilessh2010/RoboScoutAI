@@ -1,5 +1,5 @@
 {
-    "buildCommand": "npm install && npm run build && rm -rf .vercel/output && mkdir -p .vercel && cp -R packages/web/.vercel/output .vercel/output && for f in .vercel/output/functions/*.func; do mkdir -p \"$f/services/video-processing/models/decode\" \"$f/scripts/decode\"; cp services/video-processing/models/decode/best.pt \"$f/services/video-processing/models/decode/best.pt\"; cp scripts/decode/predict_video_decode.py \"$f/scripts/decode/predict_video_decode.py\"; done",
+    "buildCommand": "npm run web:vercel-build",
     "installCommand": "npm install",
     "outputDirectory": ".vercel/output",
     "env": {
