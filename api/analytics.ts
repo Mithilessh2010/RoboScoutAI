@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { connectDB } from "../../packages/server/src/db/mongodb";
-import { Analytics } from "../../packages/server/src/db/schemas/Analytics";
+import { connectDB } from "../packages/server/src/db/mongodb";
+import { Analytics } from "../packages/server/src/db/schemas/Analytics";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== "POST") {
@@ -10,14 +10,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
         await connectDB();
 
-        const bodyText = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
-
-        // Parse analytics data from body
-        let analyticsData: any;
-        try {
-            analyticsData = JSON.parse(bodyText);
-        } catch {
-            analyticsData = { raw: bodyText };
+        let analyticsData: any = {};
+        if (typeof req.body === "string") {
+            try {
+                analyticsData = JSON.parse(req.body);
+            } catch {
+                analyticsData = { raw: req.body };
+            }
+        } else if (req.body && typeof req.body === "object") {
+            analyticsData = req.body;
         }
 
         // Create analytics record

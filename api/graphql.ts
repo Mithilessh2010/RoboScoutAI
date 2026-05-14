@@ -1,12 +1,11 @@
 import { ApolloServer } from "@apollo/server";
-import { startServerAndCreateHandler } from "@as-integrations/next";
+import { startServerAndCreateNextHandler } from "@as-integrations/next";
 import { GQL_SCHEMA } from "../packages/server/src/graphql/schema";
 import { connectDB } from "../packages/server/src/db/mongodb";
 import { InMemoryLRUCache } from "@apollo/utils.keyvaluecache";
 import { responseCachePlugin } from "../packages/server/src/graphql/plugins/response-cache-plugin";
 import { RESPONSE_CACHE_SECONDS } from "../packages/server/src/constants";
 import { ApolloServerPluginLandingPageLocalDefault } from "@apollo/server/plugin/landingPage/default";
-import { apiLoggerMiddleware } from "../packages/server/src/db/schemas/Analytics";
 
 const serverCache = new InMemoryLRUCache({
     maxSize: Math.pow(2, 20) * 100,
@@ -31,8 +30,8 @@ const server = new ApolloServer({
     ],
 });
 
-export default startServerAndCreateHandler(server, {
-    context: async ({ req, res }) => {
+export default startServerAndCreateNextHandler(server, {
+    context: async (req, res) => {
         await connectDB();
         return { req, res };
     },
