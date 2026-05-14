@@ -1,19 +1,27 @@
 #!/usr/bin/env python3
-"""Train YOLO on the DECODE dataset using Ultralytics.
-Falls back to instructions if GPU or ultralytics not available.
-"""
+"""Train a DECODE-only YOLO detector with Ultralytics."""
 import argparse
+import shutil
 from pathlib import Path
-import subprocess
 import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.decode.validate_yolo_dataset import validate
 
 
 def check_gpu():
     try:
         import torch
-        return torch.cuda.is_available()
+        if torch.cuda.is_available():
+            return "cuda"
+        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"
     except Exception:
-        return False
+        return "cpu"
 
 
 def has_ultralytics():
@@ -28,29 +36,65 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--data', default='decode-training/labeled-dataset/data.yaml')
     p.add_argument('--model', default='yolov8n.pt')
-    p.add_argument('--epochs', type=int, default=20)
+    p.add_argument('--epochs', type=int, default=50)
     p.add_argument('--batch', type=int, default=8)
+    p.add_argument('--imgsz', type=int, default=640)
+    p.add_argument('--device', default=None, help='cuda, mps, cpu, or blank for auto')
+    p.add_argument('--project', default='decode-training/trained-models/runs')
+    p.add_argument('--name', default='decode-yolo')
     args = p.parse_args()
 
-    gpu = check_gpu()
-    if not has_ultralytics() or not gpu:
-        print('Ultralytics or GPU not available locally. See notebooks/TRAIN_DECODE_YOLO.md for Colab instructions.')
+    result = validate(Path(args.data), allow_empty=False)
+    if result.images == 0 or result.labels == 0:
+        print('No labeled data available. See DECODE_DATASET_GUIDE.md before training.')
         sys.exit(0)
 
-    # run ultralytics training
+    if not has_ultralytics():
+        print('Ultralytics is not installed. Run: pip install -r requirements-decode.txt')
+        print('For GPU training, see notebooks/TRAIN_DECODE_YOLO.md.')
+        sys.exit(0)
+
+    device = args.device or check_gpu()
+    if device == "cpu":
+        print('No local GPU/MPS detected. Training can run on CPU but will be slow.')
+        print('Use notebooks/TRAIN_DECODE_YOLO.md for Google Colab GPU training if preferred.')
+
     from ultralytics import YOLO
     model = YOLO(args.model)
-    model.train(data=args.data, epochs=args.epochs, batch=args.batch, imgsz=640, workers=4)
-    # copy best to trained-models
-    best = Path('runs')
-    # attempt to find best.pt
-    import glob
-    candidates = list(Path('runs').glob('**/best.pt'))
+    train_result = model.train(
+        data=args.data,
+        epochs=args.epochs,
+        batch=args.batch,
+        imgsz=args.imgsz,
+        device=device,
+        project=args.project,
+        name=args.name,
+        workers=4,
+        hsv_h=0.015,
+        hsv_s=0.7,
+        hsv_v=0.4,
+        degrees=8.0,
+        translate=0.1,
+        scale=0.5,
+        shear=2.0,
+        perspective=0.0008,
+        flipud=0.0,
+        fliplr=0.5,
+        mosaic=1.0,
+        mixup=0.05,
+        copy_paste=0.05,
+        erasing=0.2,
+    )
+
+    save_dir = Path(getattr(train_result, "save_dir", Path(args.project) / args.name))
+    candidates = sorted(save_dir.glob('weights/best.pt'), key=lambda pth: pth.stat().st_mtime, reverse=True)
+    if not candidates:
+        candidates = sorted(Path(args.project).glob('**/best.pt'), key=lambda pth: pth.stat().st_mtime, reverse=True)
     if candidates:
         dst = Path('decode-training/trained-models/best.pt')
         dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(candidates[0].read_bytes())
-        print('Saved best.pt to', dst)
+        shutil.copy2(candidates[0], dst)
+        print(f'Saved trained model to {dst}')
     else:
         print('Training complete but could not find best.pt automatically. Check runs/ for artifacts.')
 

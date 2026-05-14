@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
-"""Create contact sheet per video by sampling frames at percentages.
-Saves sheets to decode-training/reports/contact-sheets/ by default.
-"""
+"""Compatibility wrapper for create_contact_sheets.py."""
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.decode.create_contact_sheets import main
+
+
+if __name__ == '__main__':
+    main()
 import argparse
 from pathlib import Path
 import cv2

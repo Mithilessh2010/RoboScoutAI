@@ -1,38 +1,53 @@
 #!/usr/bin/env python3
-"""Sample frames from extracted frames for labeling.
+"""Sample extracted frames for DECODE labeling.
 
-This script evenly samples across videos and also selects some random frames.
+The sampler treats all camera angles as useful training data. For each video it
+includes early, middle, late, evenly spaced, and random frames.
 """
 import argparse
+import json
 from pathlib import Path
 import random
 import shutil
 
 
+def choose_indices(count: int, per_video: int, rng: random.Random):
+    if count <= 0:
+        return []
+    per_video = min(per_video, count)
+    anchors = {0, count // 4, count // 2, (3 * count) // 4, count - 1}
+    indices = {max(0, min(count - 1, i)) for i in anchors}
+
+    even_count = max(1, per_video // 2)
+    if even_count == 1:
+        indices.add(count // 2)
+    else:
+        for i in range(even_count):
+            indices.add(round(i * (count - 1) / (even_count - 1)))
+
+    while len(indices) < per_video:
+        indices.add(rng.randrange(count))
+    return sorted(indices)[:per_video]
+
+
 def sample_frames(extracted_dir: Path, out_dir: Path, per_video: int = 20, random_seed: int = 42):
     out_dir.mkdir(parents=True, exist_ok=True)
-    videos = [p for p in extracted_dir.iterdir() if p.is_dir()]
-    random.seed(random_seed)
+    videos = sorted([p for p in extracted_dir.iterdir() if p.is_dir()])
+    rng = random.Random(random_seed)
     sampled = 0
+    manifest = []
     for v in videos:
-        frames = sorted(list(v.glob("*.jpg")))
+        frames = sorted(v.glob("*.jpg"))
         if not frames:
             continue
-        # evenly spaced
-        n = min(per_video, len(frames))
-        idxs = set()
-        for i in range(n//2):
-            idx = int(i * len(frames) / (n//2))
-            idxs.add(min(idx, len(frames)-1))
-        # random others
-        while len(idxs) < n:
-            idxs.add(random.randrange(len(frames)))
-        for i in sorted(list(idxs)):
+        for i in choose_indices(len(frames), per_video, rng):
             src = frames[i]
             dst = out_dir / f"{v.name}_{src.name}"
             if not dst.exists():
                 shutil.copy(src, dst)
                 sampled += 1
+            manifest.append({"sample": dst.name, "source": str(src), "video": v.name, "index_in_video": i})
+    (out_dir / "sample_manifest.json").write_text(json.dumps(manifest, indent=2))
     print(f"Sampled {sampled} frames to {out_dir}")
 
 

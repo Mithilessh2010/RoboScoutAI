@@ -39,6 +39,10 @@ yarn-error.log*
 .pnpm-debug.log*
 screenlog.*
 
+# local ML training artifacts
+runs/
+yolov8*.pt
+
 # hosted deployment metadata
 .vercel
 

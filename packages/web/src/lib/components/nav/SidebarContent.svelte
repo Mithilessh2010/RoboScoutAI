@@ -4,6 +4,7 @@
         faClose,
         faHashtag,
         faHome,
+        faRobot,
         faTrophy,
         faTv,
     } from "@fortawesome/free-solid-svg-icons";
@@ -24,6 +25,7 @@
 <SidebarItem icon={faCalendarAlt} name="Events" link="/events/{CURRENT_SEASON}" />
 <SidebarItem icon={faHashtag} name="Teams" link="/teams" />
 <SidebarItem icon={faTrophy} name="Season Records" link="/records/{CURRENT_SEASON}/teams" />
+<SidebarItem icon={faRobot} name="Autoscore" link="/autoscore" />
 <SidebarItem icon={faTv} name="Watch Room" link="/watch" />
 
 <style>
