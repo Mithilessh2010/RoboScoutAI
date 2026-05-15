@@ -10,7 +10,7 @@ from typing import Any
 
 import requests
 from bson import ObjectId
-from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from gridfs import GridFSBucket
@@ -137,11 +137,16 @@ def transcode_video(source_path: Path, target_path: Path) -> None:
     subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 
-def iter_gridfs_file(stream, chunk_size: int = 1024 * 1024):
+def iter_gridfs_file(stream, chunk_size: int = 1024 * 1024, remaining: int | None = None):
     while True:
-        chunk = stream.read(chunk_size)
+        if remaining is not None and remaining <= 0:
+            break
+        read_size = min(chunk_size, remaining) if remaining is not None else chunk_size
+        chunk = stream.read(read_size)
         if not chunk:
             break
+        if remaining is not None:
+            remaining -= len(chunk)
         yield chunk
 
 
@@ -459,19 +464,51 @@ def get_upload(upload_id: str) -> dict[str, Any]:
 
 
 @app.get("/videos/{video_id}")
-def get_video(video_id: str):
+def get_video(video_id: str, request: Request):
     try:
         bucket = video_bucket()
         stream = bucket.open_download_stream(ObjectId(video_id))
     except Exception as exc:
         raise HTTPException(status_code=404, detail="Video not found.") from exc
 
+    range_header = request.headers.get("range")
+    if range_header:
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header.strip())
+        if not match:
+            raise HTTPException(status_code=416, detail="Invalid byte range.")
+        start_text, end_text = match.groups()
+        if not start_text and not end_text:
+            raise HTTPException(status_code=416, detail="Invalid byte range.")
+        if start_text:
+            start = int(start_text)
+            end = int(end_text) if end_text else stream.length - 1
+        else:
+            suffix_length = int(end_text)
+            start = max(stream.length - suffix_length, 0)
+            end = stream.length - 1
+        if start >= stream.length or end < start:
+            raise HTTPException(status_code=416, detail="Requested range not satisfiable.")
+        end = min(end, stream.length - 1)
+        stream.seek(start)
+        length = end - start + 1
+        return StreamingResponse(
+            iter_gridfs_file(stream, remaining=length),
+            status_code=206,
+            media_type="video/mp4",
+            headers={
+                "Content-Length": str(length),
+                "Content-Range": f"bytes {start}-{end}/{stream.length}",
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
     return StreamingResponse(
         iter_gridfs_file(stream),
         media_type="video/mp4",
         headers={
             "Content-Length": str(stream.length),
-            "Accept-Ranges": "none",
+            "Accept-Ranges": "bytes",
             "Cache-Control": "public, max-age=3600",
         },
     )
