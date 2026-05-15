@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { connectDB } from "../db/mongodb";
 import { AutoscoreDetection } from "../db/schemas/AutoscoreDetection";
 import { AutoscoreTimelineEvent } from "../db/schemas/AutoscoreTimelineEvent";

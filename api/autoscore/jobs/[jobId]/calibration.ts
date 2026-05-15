@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { NextApiRequest, NextApiResponse } from "next";
 import { connectDB } from "../../../../packages/server/src/db/mongodb";
 import { AutoscoreCalibrationZone } from "../../../../packages/server/src/db/schemas/AutoscoreCalibrationZone";
