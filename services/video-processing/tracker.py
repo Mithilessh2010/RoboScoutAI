@@ -29,7 +29,7 @@ class SimpleTracker:
             best_id = None
             best_iou = 0.0
             for track_id, track in self.tracks.items():
-                if track_id in used_tracks or track.get("class_id") != det.get("class_id"):
+                if track_id in used_tracks or track.get("class_name") != det.get("class_name"):
                     continue
                 score = _iou(track["bbox_xyxy"], det["bbox_xyxy"])
                 if score > best_iou:

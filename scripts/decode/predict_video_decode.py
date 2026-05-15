@@ -9,7 +9,7 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 
 
-def collect_detections(result, model):
+def collect_detections(result, model, detector_type):
     names = getattr(result, "names", getattr(model, "names", {}))
     detections = []
     for box in result.boxes.data.tolist() if hasattr(result.boxes, "data") else []:
@@ -19,29 +19,62 @@ def collect_detections(result, model):
             "confidence": float(box[4]),
             "class_id": cls_id,
             "class_name": names.get(cls_id, str(cls_id)) if isinstance(names, dict) else str(cls_id),
+            "detector_type": detector_type,
         })
     return detections
 
 
-def predict_image(model, source, out_dir, model_path, conf, save_annotated):
+def run_models(models, image, conf):
+    combined = []
+    results = []
+    for detector_type, model in models:
+        result = model.predict(image, verbose=False, conf=conf)[0]
+        results.append(result)
+        combined.extend(collect_detections(result, model, detector_type))
+    return combined, results
+
+
+def draw_detections(image, detections):
+    annotated = image.copy()
+    colors = {
+        "artifact_green": (57, 217, 138),
+        "artifact_purple": (184, 107, 255),
+        "robot": (255, 196, 64),
+    }
+    for detection in detections:
+        x1, y1, x2, y2 = [int(v) for v in detection["bbox_xyxy"]]
+        color = colors.get(detection["class_name"], (255, 255, 255))
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+        label = f'{detection["class_name"]} {detection["confidence"]:.2f}'
+        cv2.putText(annotated, label, (x1, max(18, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+    return annotated
+
+
+def model_manifest(models, model_paths):
+    return [
+        {"detector_type": detector_type, "path": str(model_paths[detector_type])}
+        for detector_type, _model in models
+    ]
+
+
+def predict_image(models, source, out_dir, model_paths, conf, save_annotated):
     image = cv2.imread(str(source))
     if image is None:
         raise SystemExit(f"Could not open image: {source}")
     height, width = image.shape[:2]
 
-    result = model.predict(image, verbose=False, conf=conf)[0]
-    detections = collect_detections(result, model)
+    detections, _results = run_models(models, image, conf)
 
     if save_annotated:
         annotated_dir = out_dir / source.stem / "annotated-images"
         annotated_dir.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(annotated_dir / f"{source.stem}.jpg"), result.plot())
+        cv2.imwrite(str(annotated_dir / f"{source.stem}.jpg"), draw_detections(image, detections))
 
     out_file = out_dir / f"{source.stem}.json"
     out_file.write_text(json.dumps({
         "source": str(source),
         "source_type": "image",
-        "model": str(model_path),
+        "models": model_manifest(models, model_paths),
         "width": width,
         "height": height,
         "detections": detections,
@@ -49,7 +82,7 @@ def predict_image(model, source, out_dir, model_path, conf, save_annotated):
     print("Saved predictions to", out_file)
 
 
-def predict_video(model, source, out_dir, model_path, conf, stride, save_annotated, save_video):
+def predict_video(models, source, out_dir, model_paths, conf, stride, save_annotated, save_video):
     cap = cv2.VideoCapture(str(source))
     if not cap.isOpened():
         raise SystemExit(f"Could not open video: {source}")
@@ -73,11 +106,10 @@ def predict_video(model, source, out_dir, model_path, conf, stride, save_annotat
         if frame_idx % max(1, stride) != 0:
             frame_idx += 1
             continue
-        result = model.predict(frame, verbose=False, conf=conf)[0]
-        detections = collect_detections(result, model)
+        detections, _results = run_models(models, frame, conf)
         results.append({"frame": frame_idx, "timestamp": frame_idx / fps, "width": width, "height": height, "detections": detections})
         if save_annotated or writer is not None:
-            annotated = result.plot()
+            annotated = draw_detections(frame, detections)
             if save_annotated:
                 cv2.imwrite(str(frames_dir / f"frame_{frame_idx:06d}.jpg"), annotated)
             if writer is not None:
@@ -88,7 +120,7 @@ def predict_video(model, source, out_dir, model_path, conf, stride, save_annotat
     out_file.write_text(json.dumps({
         "source": str(source),
         "source_type": "video",
-        "model": str(model_path),
+        "models": model_manifest(models, model_paths),
         "width": width,
         "height": height,
         "fps": fps,
@@ -105,6 +137,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('source', help='Image or video to run artifact detection on')
     p.add_argument('--model', default='services/video-processing/models/decode/best.pt')
+    p.add_argument('--robot-model', default=None, help='Optional robot detector weights to run beside the artifact model')
     p.add_argument('--out', default='decode-training/predictions')
     p.add_argument('--conf', type=float, default=0.25)
     p.add_argument('--stride', type=int, default=1, help='For videos, run every Nth frame')
@@ -115,6 +148,9 @@ def main():
     model_path = Path(args.model)
     if not model_path.exists():
         raise SystemExit(f"Missing trained model: {model_path}. Train or copy best.pt first.")
+    robot_model_path = Path(args.robot_model) if args.robot_model else None
+    if robot_model_path and not robot_model_path.exists():
+        raise SystemExit(f"Missing robot model: {robot_model_path}. Train or copy robot weights first.")
     source = Path(args.source)
     if not source.exists():
         raise SystemExit(f"Missing source file: {source}")
@@ -125,15 +161,19 @@ def main():
         print('Install ultralytics to run prediction locally')
         return
 
-    model = YOLO(str(model_path))
+    models = [("artifact", YOLO(str(model_path)))]
+    model_paths = {"artifact": model_path}
+    if robot_model_path:
+        models.append(("robot", YOLO(str(robot_model_path))))
+        model_paths["robot"] = robot_model_path
     outp = Path(args.out)
     outp.mkdir(parents=True, exist_ok=True)
 
     suffix = source.suffix.lower()
     if suffix in IMAGE_EXTS:
-        predict_image(model, source, outp, model_path, args.conf, args.save_annotated)
+        predict_image(models, source, outp, model_paths, args.conf, args.save_annotated)
     elif suffix in VIDEO_EXTS:
-        predict_video(model, source, outp, model_path, args.conf, args.stride, args.save_annotated, args.save_video)
+        predict_video(models, source, outp, model_paths, args.conf, args.stride, args.save_annotated, args.save_video)
     else:
         raise SystemExit(f"Unsupported source type: {source.suffix}")
 

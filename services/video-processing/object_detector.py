@@ -35,3 +35,29 @@ class ObjectDetector:
                 "class_name": names.get(class_id, str(class_id)) if isinstance(names, dict) else str(class_id),
             })
         return out
+
+
+class CombinedObjectDetector:
+    """Run specialist DECODE detectors together while preserving their labels."""
+
+    def __init__(
+        self,
+        artifact_model_path: Path = Path("services/video-processing/models/decode/best.pt"),
+        robot_model_path: Path = Path("services/video-processing/models/decode/robot/best.pt"),
+        confidence: float = 0.25,
+    ):
+        self.detectors = {
+            "artifact": ObjectDetector(artifact_model_path, confidence),
+            "robot": ObjectDetector(robot_model_path, confidence),
+        }
+
+    def load(self):
+        for detector in self.detectors.values():
+            detector.load()
+        return self
+
+    def predict(self, image) -> List[Dict[str, Any]]:
+        rows = []
+        for detector_type, detector in self.detectors.items():
+            rows.extend({**row, "detector_type": detector_type} for row in detector.predict(image))
+        return rows

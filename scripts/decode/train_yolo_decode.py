@@ -42,9 +42,20 @@ def main():
     p.add_argument('--device', default=None, help='cuda, mps, cpu, or blank for auto')
     p.add_argument('--project', default='decode-training/trained-models/runs')
     p.add_argument('--name', default='decode-yolo')
+    p.add_argument(
+        '--expected',
+        choices=['auto', 'phase1-artifacts', 'phase2-robot', 'full-decode'],
+        default='auto',
+        help='Expected dataset class set.',
+    )
+    p.add_argument(
+        '--best-dest',
+        default='decode-training/trained-models/best.pt',
+        help='Where to copy the best trained weights after training.',
+    )
     args = p.parse_args()
 
-    result = validate(Path(args.data), allow_empty=False)
+    result = validate(Path(args.data), allow_empty=False, expected=args.expected)
     if result.images == 0 or result.labels == 0:
         print('No labeled data available. See DECODE_DATASET_GUIDE.md before training.')
         sys.exit(0)
@@ -91,7 +102,7 @@ def main():
     if not candidates:
         candidates = sorted(Path(args.project).glob('**/best.pt'), key=lambda pth: pth.stat().st_mtime, reverse=True)
     if candidates:
-        dst = Path('decode-training/trained-models/best.pt')
+        dst = Path(args.best_dest)
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(candidates[0], dst)
         print(f'Saved trained model to {dst}')

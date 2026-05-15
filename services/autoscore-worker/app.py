@@ -16,6 +16,7 @@ from pymongo import MongoClient
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL_PATH = ROOT / "services/video-processing/models/decode/best.pt"
+ROBOT_MODEL_PATH = ROOT / "services/video-processing/models/decode/robot/best.pt"
 PREDICT_SCRIPT = ROOT / "scripts/decode/predict_video_decode.py"
 PREDICTIONS_DIR = Path(os.environ.get("AUTOSCORE_PREDICTIONS_DIR", "/tmp/decode-autoscore/predictions"))
 VIDEO_DIR = Path(os.environ.get("AUTOSCORE_VIDEO_DIR", "/tmp/decode-autoscore/videos"))
@@ -113,7 +114,8 @@ def flatten_detections(job_object_id: ObjectId, prediction: dict[str, Any]) -> l
                     "phase": phase,
                     "className": class_name,
                     "classId": int(detection["class_id"]),
-                    "artifactColor": "green" if class_name == "artifact_green" else "purple",
+                    "detectorType": detection.get("detector_type", "robot" if class_name == "robot" else "artifact"),
+                    "artifactColor": "green" if class_name == "artifact_green" else "purple" if class_name == "artifact_purple" else None,
                     "confidence": float(detection["confidence"]),
                     "x": float(x1),
                     "y": float(y1),
@@ -189,6 +191,11 @@ def run_job(request: RunRequest) -> None:
             str(source_path),
             "--model",
             str(MODEL_PATH),
+            *(
+                ["--robot-model", str(ROBOT_MODEL_PATH)]
+                if ROBOT_MODEL_PATH.exists()
+                else []
+            ),
             "--stride",
             str(max(1, request.stride)),
             "--conf",
@@ -244,6 +251,7 @@ def run_job(request: RunRequest) -> None:
         total_detections = len(rows)
         artifact_green_count = sum(1 for row in rows if row["className"] == "artifact_green")
         artifact_purple_count = sum(1 for row in rows if row["className"] == "artifact_purple")
+        robot_detection_count = sum(1 for row in rows if row["className"] == "robot")
         average_confidence = sum(confidences) / len(confidences) if confidences else 0
         max_confidence = max(confidences) if confidences else 0
 
@@ -258,6 +266,7 @@ def run_job(request: RunRequest) -> None:
             "totalDetections": total_detections,
             "artifactGreenCount": artifact_green_count,
             "artifactPurpleCount": artifact_purple_count,
+            "robotDetectionCount": robot_detection_count,
             "averageConfidence": average_confidence,
             "maxConfidence": max_confidence,
             "updatedAt": utcnow(),
@@ -297,6 +306,7 @@ def health() -> dict[str, Any]:
     return {
         "ok": True,
         "modelExists": MODEL_PATH.exists(),
+        "robotModelExists": ROBOT_MODEL_PATH.exists(),
         "predictScriptExists": PREDICT_SCRIPT.exists(),
     }
 

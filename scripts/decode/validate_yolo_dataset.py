@@ -26,6 +26,10 @@ PHASE1_ARTIFACT_NAMES = [
     "artifact_purple",
 ]
 
+ROBOT_NAMES = [
+    "robot",
+]
+
 
 @dataclass
 class ValidationResult:
@@ -48,14 +52,16 @@ def validate(data_yaml: Path, allow_empty: bool = False, expected: str = "auto")
     nc = int(d.get("nc", len(names)))
     expected_options = {
         "phase1-artifacts": PHASE1_ARTIFACT_NAMES,
+        "phase2-robot": ROBOT_NAMES,
         "full-decode": EXPECTED_NAMES,
     }
     if expected == "auto":
         valid_names = list(expected_options.values())
         if names not in valid_names or nc != len(names):
             raise SystemExit(
-                "Expected either Phase 1 artifact classes "
-                f"{PHASE1_ARTIFACT_NAMES} or full DECODE classes; got nc={nc}, names={names}"
+                "Expected Phase 1 artifact classes "
+                f"{PHASE1_ARTIFACT_NAMES}, Phase 2 robot classes {ROBOT_NAMES}, "
+                f"or full DECODE classes; got nc={nc}, names={names}"
             )
     else:
         expected_names = expected_options[expected]
@@ -139,7 +145,7 @@ def main():
     p.add_argument("--allow-empty", action="store_true", help="Only validate scaffold/classes; do not require labeled splits.")
     p.add_argument(
         "--expected",
-        choices=["auto", "phase1-artifacts", "full-decode"],
+        choices=["auto", "phase1-artifacts", "phase2-robot", "full-decode"],
         default="auto",
         help="Expected DECODE class set.",
     )

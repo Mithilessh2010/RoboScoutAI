@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY scripts/decode/predict_video_decode.py scripts/decode/predict_video_decode.py
 COPY services/video-processing/models/decode/best.pt services/video-processing/models/decode/best.pt
+COPY services/video-processing/models/decode/robot/best.pt services/video-processing/models/decode/robot/best.pt
 COPY services/autoscore-worker/app.py services/autoscore-worker/app.py
 
 EXPOSE 8080

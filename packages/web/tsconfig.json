@@ -4,6 +4,8 @@
         /* Modules */
         "resolveJsonModule": true,
         "moduleResolution": "node",
+        "rootDir": "../..",
+        "allowSyntheticDefaultImports": true,
 
         /* Compilation */
         "incremental": true,

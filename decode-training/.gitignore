@@ -16,3 +16,4 @@ trained-models/*
 !trained-models/.gitkeep
 !labeled-dataset/
 !labeled-dataset/**
+labeled-dataset-robot/

@@ -3,7 +3,7 @@ Model Training Plan (DECODE)
 
 Objective
 ---------
-Train a DECODE-only computer vision detector for RoboScoutAI autoscore. Video
+Train DECODE-only computer vision detectors for RoboScoutAI autoscore. Video
 scoring must use computer vision. OpenRouter can summarize a scoring timeline
 later, but it must not be the visual scorer.
 
@@ -25,11 +25,20 @@ Dataset plan
 1. Keep all raw videos in `decode-training/raw-videos/unsorted/`.
 2. Extract frames at configurable FPS, default 2 FPS.
 3. Sample early, middle, late, evenly spaced, and random frames across every video.
-4. Label the sampled frames in Roboflow or CVAT using the 12 DECODE classes.
+4. Label focused datasets in Roboflow or CVAT. Specialist datasets are allowed:
+   artifacts can use `artifact_green` / `artifact_purple`, robots can use `robot`.
 5. Export YOLO format and place images/labels into train, val, and test splits.
 6. Run `scripts/decode/validate_yolo_dataset.py`.
 7. Train with Ultralytics YOLO, defaulting to `yolov8n.pt` for quick iteration.
-8. Save the real trained model to `decode-training/trained-models/best.pt`.
+8. Save deployed weights under `services/video-processing/models/decode/`:
+   artifact `best.pt`, robot `robot/best.pt`.
+
+Runtime composition
+-------------------
+The current production path runs the artifact detector and robot detector
+together, then merges detections by `class_name` plus `detector_type`. This keeps
+the two labeled datasets useful immediately while preserving a future path to a
+larger unified detector if more complete labels become available later.
 
 Augmentation
 ------------
