@@ -11,6 +11,7 @@ export interface IAutoscoreJob extends Document {
     errorMessage?: string;
     predictionJsonPath?: string;
     annotatedFramesPath?: string;
+    progress?: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -30,6 +31,7 @@ const autoscoreJobSchema = new Schema<IAutoscoreJob>(
         errorMessage: { type: String, default: null },
         predictionJsonPath: { type: String, default: null },
         annotatedFramesPath: { type: String, default: null },
+            progress: { type: Number, default: 0 },
     },
     { timestamps: true }
 );

@@ -135,9 +135,25 @@ def run_job(request: RunRequest) -> None:
                 "phase": "artifact_detection",
                 "errorMessage": None,
                 "updatedAt": now,
+                "progress": 0,
             }
         },
     )
+
+    def log(message: str, level: str = "info"):
+        try:
+            entry = {"jobId": job_object_id, "level": level, "message": message, "createdAt": utcnow()}
+            db.autoscorelogs.insert_one(entry)
+            db.autoscorejobs.update_one({"_id": job_object_id}, {"$set": {"lastLog": entry, "updatedAt": utcnow()}})
+        except Exception:
+            pass
+
+    def set_progress(pct: int):
+        try:
+            pct = max(0, min(100, int(pct)))
+            db.autoscorejobs.update_one({"_id": job_object_id}, {"$set": {"progress": pct, "updatedAt": utcnow()}})
+        except Exception:
+            pass
 
     try:
         if not MODEL_PATH.exists():
@@ -146,7 +162,12 @@ def run_job(request: RunRequest) -> None:
             raise RuntimeError(f"Missing prediction script: {PREDICT_SCRIPT}")
 
         PREDICTIONS_DIR.mkdir(parents=True, exist_ok=True)
+        log("Starting video download", "info")
+        set_progress(5)
         source_path = download_video(video_url, request.jobId)
+        log(f"Downloaded video to {source_path}", "info")
+        set_progress(15)
+
         command = [
             "python3",
             str(PREDICT_SCRIPT),
@@ -163,7 +184,43 @@ def run_job(request: RunRequest) -> None:
         if request.saveAnnotated:
             command.append("--save-annotated")
 
-        subprocess.run(command, cwd=ROOT, check=True, timeout=60 * 45)
+        log(f"Running prediction: {' '.join(command)}", "info")
+
+        # Run the prediction subprocess and stream logs to MongoDB so progress can be observed
+        process = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        last_progress_update = 15
+        if process.stdout:
+            for line in process.stdout:
+                line = line.rstrip("\n")
+                log(line, "stdout")
+                # try to parse progress indicators from the predict script's output
+                # e.g., lines like "Processed 123/1000 frames" or "Progress: 12%"
+                m = re.search(r"(\d+)/(\d+) frames", line)
+                if m:
+                    try:
+                        processed = int(m.group(1))
+                        total = int(m.group(2))
+                        pct = 20 + int((processed / max(1, total)) * 70)
+                        if pct - last_progress_update >= 3:
+                            set_progress(pct)
+                            last_progress_update = pct
+                    except Exception:
+                        pass
+                m2 = re.search(r"Progress[: ]+(\d+)%", line)
+                if m2:
+                    try:
+                        pct = 20 + int(int(m2.group(1)) * 0.7)
+                        if pct - last_progress_update >= 3:
+                            set_progress(pct)
+                            last_progress_update = pct
+                    except Exception:
+                        pass
+
+        ret = process.wait(timeout=60 * 45)
+        if ret != 0:
+            raise RuntimeError(f"Predict script exited with code {ret}")
+
+        set_progress(80)
 
         prediction_json_path = PREDICTIONS_DIR / f"{source_path.stem}.json"
         prediction_data = json.loads(prediction_json_path.read_text())
@@ -178,6 +235,8 @@ def run_job(request: RunRequest) -> None:
         db.autoscoredetections.delete_many({"jobId": job_object_id})
         if rows:
             db.autoscoredetections.insert_many(rows)
+
+        set_progress(90)
 
         summary = {
             "jobId": job_object_id,
@@ -204,13 +263,15 @@ def run_job(request: RunRequest) -> None:
                     "predictionJsonPath": str(prediction_json_path),
                     "annotatedFramesPath": str(annotated_frames_path),
                     "updatedAt": utcnow(),
+                    "progress": 100,
                 }
             },
         )
     except Exception as exc:
+        log(f"Job failed: {exc}", "error")
         db.autoscorejobs.update_one(
             {"_id": job_object_id},
-            {"$set": {"status": "failed", "errorMessage": str(exc), "updatedAt": utcnow()}},
+            {"$set": {"status": "failed", "errorMessage": str(exc), "updatedAt": utcnow(), "progress": 0}},
         )
     finally:
         shutil.rmtree(VIDEO_DIR, ignore_errors=True)

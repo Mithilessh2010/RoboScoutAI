@@ -5,8 +5,12 @@ const MAX_AUTOSCORE_UPLOAD_BYTES = Number(process.env.AUTOSCORE_MAX_UPLOAD_BYTES
 const ALLOWED_VIDEO_CONTENT_TYPES = ["video/*", "application/octet-stream"];
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+    if (req.method === "GET") {
+        return res.status(200).json({ ok: true, message: "Autoscore upload-video endpoint (GET)" });
+    }
+
     if (req.method !== "POST") {
-        res.setHeader("Allow", "POST");
+        res.setHeader("Allow", "GET, POST");
         return res.status(405).json({ error: "Method not allowed" });
     }
 

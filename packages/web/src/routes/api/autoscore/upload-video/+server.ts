@@ -26,3 +26,7 @@ export const POST: RequestHandler = async ({ request }) => {
         return json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 });
     }
 };
+
+export const GET: RequestHandler = async () => {
+    return json({ ok: true, message: "Autoscore upload-video endpoint (GET)" });
+};
