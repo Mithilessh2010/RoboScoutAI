@@ -90,9 +90,26 @@ const manualCalibrationZoneSchema = new Schema(
     { timestamps: true }
 );
 
+const autoscoreTimelineEventSchema = new Schema(
+    {
+        jobId: { type: Schema.Types.ObjectId, ref: "AutoscoreJob", required: true, index: true },
+        timestamp: { type: Number, required: true },
+        eventType: {
+            type: String,
+            enum: ["artifact_detected", "enter_zone", "exit_zone", "score", "note"],
+            required: true,
+        },
+        details: { type: Schema.Types.Mixed, default: null },
+        confidence: { type: Number, default: null },
+        detectionId: { type: Schema.Types.ObjectId, ref: "AutoscoreDetection", default: null, index: true },
+    },
+    { timestamps: true }
+);
+
 autoscoreJobSchema.index({ status: 1, updatedAt: -1 });
 autoscoreDetectionSchema.index({ jobId: 1, frameNumber: 1 });
 manualCalibrationZoneSchema.index({ jobId: 1, zoneName: 1 }, { unique: true });
+autoscoreTimelineEventSchema.index({ jobId: 1, timestamp: 1 });
 
 export const AutoscoreJob =
     mongoose.models.AutoscoreJob || mongoose.model("AutoscoreJob", autoscoreJobSchema);
@@ -104,6 +121,9 @@ export const AutoscoreSummary =
 export const ManualCalibrationZone =
     mongoose.models.ManualCalibrationZone ||
     mongoose.model("ManualCalibrationZone", manualCalibrationZoneSchema);
+export const AutoscoreTimelineEvent =
+    mongoose.models.AutoscoreTimelineEvent ||
+    mongoose.model("AutoscoreTimelineEvent", autoscoreTimelineEventSchema);
 
 type PredictionFrame = {
     frame: number;

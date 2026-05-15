@@ -14,6 +14,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getDBConnection = exports.disconnectDB = exports.connectDB = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
+const fs_1 = require("fs");
+const path_1 = __importDefault(require("path"));
 const constants_1 = require("../constants");
 let isConnected = false;
 let connection = null;
@@ -24,13 +26,14 @@ function connectDB() {
                 console.log("Using existing MongoDB connection");
             return connection;
         }
-        if (!constants_1.DATABASE_URL) {
+        const databaseUrl = readRootEnv("DATABASE_URL") || process.env.DATABASE_URL || (constants_1.DATABASE_URL.startsWith("mongodb://localhost") ? "" : constants_1.DATABASE_URL);
+        if (!databaseUrl) {
             throw new Error("DATABASE_URL environment variable is not set");
         }
         try {
             if (constants_1.LOGGING)
                 console.log("Connecting to MongoDB...");
-            connection = yield mongoose_1.default.connect(constants_1.DATABASE_URL, {
+            connection = yield mongoose_1.default.connect(databaseUrl, {
                 maxPoolSize: 10,
                 minPoolSize: 2,
                 serverSelectionTimeoutMS: 5000,
@@ -50,6 +53,25 @@ function connectDB() {
     });
 }
 exports.connectDB = connectDB;
+function readRootEnv(key) {
+    let current = process.cwd();
+    for (let i = 0; i < 8; i += 1) {
+        const envPath = path_1.default.join(current, ".env.local");
+        if ((0, fs_1.existsSync)(envPath)) {
+            const line = (0, fs_1.readFileSync)(envPath, "utf8")
+                .split(/\r?\n/)
+                .find((entry) => entry.trim().startsWith(`${key}=`));
+            if (!line)
+                return "";
+            return line.slice(line.indexOf("=") + 1).trim().replace(/^["']|["']$/g, "");
+        }
+        const parent = path_1.default.dirname(current);
+        if (parent === current)
+            break;
+        current = parent;
+    }
+    return "";
+}
 function disconnectDB() {
     return __awaiter(this, void 0, void 0, function* () {
         if (connection) {
