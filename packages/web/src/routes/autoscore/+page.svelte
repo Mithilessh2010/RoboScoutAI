@@ -36,6 +36,7 @@
     let busy = false;
     let message = "";
     let errorMessage = "";
+    let fileInputKey = 0;
 
     $: greenCount = selectedSummary?.artifactGreenCount ?? selectedJob?.summary?.artifactGreenCount ?? 0;
     $: purpleCount = selectedSummary?.artifactPurpleCount ?? selectedJob?.summary?.artifactPurpleCount ?? 0;
@@ -43,6 +44,10 @@
     $: averageConfidence =
         selectedSummary?.averageConfidence ?? selectedJob?.summary?.averageConfidence ?? 0;
     $: maxConfidence = selectedSummary?.maxConfidence ?? selectedJob?.summary?.maxConfidence ?? 0;
+    $: selectedJobIsLocalOnly = !!selectedJob?.videoPath && !selectedJob?.videoUrl;
+    $: runBlockedReason = selectedJobIsLocalOnly
+        ? "This job uses a local file path. Vercel cannot access local Mac files, so create a new job with a Video URL."
+        : "";
 
     async function loadJobs() {
         let response = await fetch("/api/autoscore/jobs");
@@ -61,12 +66,11 @@
         message = "";
         errorMessage = "";
         try {
-            if (videoFile && videoFile.size > 4 * 1024 * 1024) {
+            if (videoFile) {
                 throw new Error(
-                    "Vercel cannot accept large match-video uploads through this API. Use a video URL, or run uploads locally."
+                    "Direct browser video uploads are disabled on Vercel because match videos exceed Vercel's request size limit. Paste a public Video URL instead."
                 );
             }
-
             let response: Response;
             if (videoFile) {
                 let form = new FormData();
@@ -125,7 +129,16 @@
 
     async function runSelectedJob() {
         if (!selectedJob) return;
+        if (runBlockedReason) {
+            errorMessage = runBlockedReason;
+            return;
+        }
         await runArtifactDetection(selectedJob);
+    }
+
+    function clearUpload() {
+        videoFile = null;
+        fileInputKey += 1;
     }
 
     async function selectJob(job: Job) {
@@ -194,19 +207,26 @@
             </label>
             <label>
                 <span>Upload video</span>
-                <input
-                    type="file"
-                    accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
-                    on:change={(event) => {
-                        videoFile = event.currentTarget.files?.[0] ?? null;
-                        if (videoFile) {
-                            videoName = videoName || videoFile.name;
-                            videoPath = "";
-                            videoUrl = "";
-                        }
-                    }}
-                />
+                {#key fileInputKey}
+                    <input
+                        type="file"
+                        accept="video/mp4,video/quicktime,video/webm,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi"
+                        on:change={(event) => {
+                            videoFile = event.currentTarget.files?.[0] ?? null;
+                            if (videoFile) {
+                                errorMessage =
+                                    "Direct video uploads are too large for Vercel. Clear this file and paste a Video URL instead.";
+                                videoName = videoName || videoFile.name;
+                                videoPath = "";
+                                videoUrl = "";
+                            }
+                        }}
+                    />
+                {/key}
             </label>
+            {#if videoFile}
+                <button class="secondary" type="button" on:click={clearUpload}>Clear File</button>
+            {/if}
             <button type="submit" disabled={busy}>Create Job</button>
         </form>
 
@@ -252,12 +272,17 @@
                     {#if selectedJob}
                         <button
                             on:click={runSelectedJob}
-                            disabled={busy || selectedJob.status === "running"}
+                            disabled={busy || selectedJob.status === "running" || !!runBlockedReason}
+                            title={runBlockedReason}
                         >
                             Run Artifact Detection
                         </button>
                     {/if}
                 </div>
+
+                {#if runBlockedReason}
+                    <p class="error">{runBlockedReason}</p>
+                {/if}
 
                 <div class="stats">
                     <div>
