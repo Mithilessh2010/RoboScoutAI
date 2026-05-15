@@ -3,13 +3,17 @@ import os
 import re
 import shutil
 import subprocess
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import requests
 from bson import ObjectId
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from gridfs import GridFSBucket
 from pydantic import BaseModel
 from pymongo import MongoClient
 
@@ -20,12 +24,26 @@ ROBOT_MODEL_PATH = ROOT / "services/video-processing/models/decode/robot/best.pt
 PREDICT_SCRIPT = ROOT / "scripts/decode/predict_video_decode.py"
 PREDICTIONS_DIR = Path(os.environ.get("AUTOSCORE_PREDICTIONS_DIR", "/tmp/decode-autoscore/predictions"))
 VIDEO_DIR = Path(os.environ.get("AUTOSCORE_VIDEO_DIR", "/tmp/decode-autoscore/videos"))
+UPLOAD_DIR = Path(os.environ.get("AUTOSCORE_UPLOAD_DIR", "/tmp/decode-autoscore/uploads"))
 DEFAULT_STRIDE = int(os.environ.get("AUTOSCORE_FRAME_STRIDE", "90"))
 DEFAULT_CONF = float(os.environ.get("AUTOSCORE_CONF", "0.25"))
 AUTO_SECONDS = 30
 MATCH_SECONDS = 150
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "https://roboscoutai-autoscore-worker.fly.dev").rstrip("/")
 
 app = FastAPI(title="RoboScoutAI DECODE Autoscore Worker")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://roboscoutai-web.vercel.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
 class RunRequest(BaseModel):
@@ -46,6 +64,10 @@ def database():
         raise RuntimeError("DATABASE_URL is not set.")
     db_name = os.environ.get("MONGODB_DB_NAME", "test")
     return MongoClient(database_url)[db_name]
+
+
+def video_bucket():
+    return GridFSBucket(database(), bucket_name="autoscorevideos")
 
 
 def check_secret(authorization: str | None) -> None:
@@ -91,6 +113,36 @@ def download_video(video_url: str, job_id: str) -> Path:
             shutil.copyfileobj(response.raw, file)
 
     return target
+
+
+def transcode_video(source_path: Path, target_path: Path) -> None:
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(source_path),
+        "-vf",
+        "scale=-2:720",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "28",
+        "-movflags",
+        "+faststart",
+        "-an",
+        str(target_path),
+    ]
+    subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+def iter_gridfs_file(stream, chunk_size: int = 1024 * 1024):
+    while True:
+        chunk = stream.read(chunk_size)
+        if not chunk:
+            break
+        yield chunk
 
 
 def flatten_detections(job_object_id: ObjectId, prediction: dict[str, Any]) -> list[dict[str, Any]]:
@@ -309,6 +361,64 @@ def health() -> dict[str, Any]:
         "robotModelExists": ROBOT_MODEL_PATH.exists(),
         "predictScriptExists": PREDICT_SCRIPT.exists(),
     }
+
+
+@app.post("/upload-video")
+async def upload_video(file: UploadFile = File(...)) -> dict[str, Any]:
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = Path(file.filename or "video.mov").suffix or ".mov"
+    upload_id = uuid.uuid4().hex
+    raw_path = UPLOAD_DIR / f"{upload_id}{suffix}"
+    mp4_path = UPLOAD_DIR / f"{upload_id}.mp4"
+
+    try:
+        with raw_path.open("wb") as output:
+            while chunk := await file.read(1024 * 1024):
+                output.write(chunk)
+
+        transcode_video(raw_path, mp4_path)
+        bucket = video_bucket()
+        with mp4_path.open("rb") as source:
+            video_id = bucket.upload_from_stream(
+                f"{upload_id}.mp4",
+                source,
+                metadata={
+                    "originalName": file.filename,
+                    "contentType": "video/mp4",
+                    "createdAt": utcnow(),
+                },
+            )
+
+        return {
+            "videoId": str(video_id),
+            "videoUrl": f"{PUBLIC_BASE_URL}/videos/{video_id}",
+            "videoName": file.filename or raw_path.name,
+            "contentType": "video/mp4",
+            "sizeBytes": mp4_path.stat().st_size,
+        }
+    finally:
+        await file.close()
+        raw_path.unlink(missing_ok=True)
+        mp4_path.unlink(missing_ok=True)
+
+
+@app.get("/videos/{video_id}")
+def get_video(video_id: str):
+    try:
+        bucket = video_bucket()
+        stream = bucket.open_download_stream(ObjectId(video_id))
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Video not found.") from exc
+
+    return StreamingResponse(
+        iter_gridfs_file(stream),
+        media_type="video/mp4",
+        headers={
+            "Content-Length": str(stream.length),
+            "Accept-Ranges": "none",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
 
 
 @app.post("/run-artifact-detection")
