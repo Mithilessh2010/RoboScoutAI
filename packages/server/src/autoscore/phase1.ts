@@ -13,16 +13,43 @@ export async function runPhase1Autoscore(jobId: string, options: { openRouterKey
 
     const detections = await AutoscoreDetection.find({ jobId }).sort({ timestamp: 1 }).lean();
     const zones = await ManualCalibrationZone.find({ jobId }).lean();
+    const normalizedZones = zones
+        .map((zone) => ({
+            zoneName: zone.zoneName,
+            points: (zone.points || []).map((point: any) => ({ x: point.x, y: point.y })),
+        }))
+        .filter((zone) => zone.points.length >= 3);
 
-    // Simple event generation: create an artifact_detected + immediate score event per detection
+    // Simple event generation: create artifact_detected + score events, and annotate zone transitions when possible.
     let lastScoreAt = -Infinity;
     const cooldownSeconds = 1.0;
     const createdEvents: any[] = [];
+    const zoneState = new Map<string, boolean>();
 
     for (const det of detections) {
         const ts = det.timestamp ?? 0;
         const confidence = det.confidence ?? 0;
         if (confidence < 0.25) continue;
+
+        const center = getDetectionCenter(det);
+        const normalizedCenter = normalizeCenter(center, det.frameWidth ?? null, det.frameHeight ?? null);
+
+        for (const zone of normalizedZones) {
+            const zoneKey = zone.zoneName;
+            const isInside = normalizedCenter ? pointInPolygon(normalizedCenter, zone.points) : false;
+            const wasInside = zoneState.get(zoneKey) ?? false;
+            if (isInside !== wasInside) {
+                await AutoscoreTimelineEvent.create({
+                    jobId,
+                    timestamp: ts,
+                    eventType: isInside ? "enter_zone" : "exit_zone",
+                    details: { zoneName: zoneKey, className: det.className },
+                    confidence,
+                    detectionId: det._id,
+                });
+                zoneState.set(zoneKey, isInside);
+            }
+        }
 
         const artifactEvent = await AutoscoreTimelineEvent.create({
             jobId,
@@ -97,4 +124,34 @@ export async function runPhase1Autoscore(jobId: string, options: { openRouterKey
     }
 
     return { created: createdEvents.length, summary: summaryText };
+}
+
+function getDetectionCenter(det: any) {
+    return {
+        x: (det.x ?? 0) + (det.width ?? 0) / 2,
+        y: (det.y ?? 0) + (det.height ?? 0) / 2,
+    };
+}
+
+function normalizeCenter(center: { x: number; y: number }, frameWidth: number | null, frameHeight: number | null) {
+    if (!frameWidth || !frameHeight) {
+        return null;
+    }
+    return { x: center.x / frameWidth, y: center.y / frameHeight };
+}
+
+function pointInPolygon(point: { x: number; y: number }, polygon: Array<{ x: number; y: number }>) {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].x;
+        const yi = polygon[i].y;
+        const xj = polygon[j].x;
+        const yj = polygon[j].y;
+
+        const intersects =
+            yi > point.y !== yj > point.y &&
+            point.x < ((xj - xi) * (point.y - yi)) / (yj - yi + 0.0000001) + xi;
+        if (intersects) inside = !inside;
+    }
+    return inside;
 }

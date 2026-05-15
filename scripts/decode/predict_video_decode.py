@@ -27,6 +27,7 @@ def predict_image(model, source, out_dir, model_path, conf, save_annotated):
     image = cv2.imread(str(source))
     if image is None:
         raise SystemExit(f"Could not open image: {source}")
+    height, width = image.shape[:2]
 
     result = model.predict(image, verbose=False, conf=conf)[0]
     detections = collect_detections(result, model)
@@ -41,6 +42,8 @@ def predict_image(model, source, out_dir, model_path, conf, save_annotated):
         "source": str(source),
         "source_type": "image",
         "model": str(model_path),
+        "width": width,
+        "height": height,
         "detections": detections,
     }, indent=2))
     print("Saved predictions to", out_file)
@@ -86,6 +89,8 @@ def predict_video(model, source, out_dir, model_path, conf, stride, save_annotat
         "source": str(source),
         "source_type": "video",
         "model": str(model_path),
+        "width": width,
+        "height": height,
         "fps": fps,
         "frame_stride": max(1, stride),
         "detections": results,

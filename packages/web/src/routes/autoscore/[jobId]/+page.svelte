@@ -170,6 +170,52 @@
             unsubscribe();
         };
     });
+
+    // Render detection boxes and zones onto overlay when detections or zones update
+    $: if (overlayEl) {
+        // clear
+        overlayEl.innerHTML = "";
+        const v = vidEl;
+        if (!v) {
+            // video not ready yet
+        } else {
+            const rect = v.getBoundingClientRect();
+            const scaleX = rect.width; const scaleY = rect.height;
+
+            for (const z of $zones) {
+                // draw zone polygon bounding box
+                if (!z.points || z.points.length === 0) continue;
+                const minX = Math.min(...z.points.map(p => p.x));
+                const minY = Math.min(...z.points.map(p => p.y));
+                const maxX = Math.max(...z.points.map(p => p.x));
+                const maxY = Math.max(...z.points.map(p => p.y));
+                const el = document.createElement('div');
+                el.className = 'box';
+                el.style.left = Math.round(minX * scaleX) + 'px';
+                el.style.top = Math.round(minY * scaleY) + 'px';
+                el.style.width = Math.round((maxX - minX) * scaleX) + 'px';
+                el.style.height = Math.round((maxY - minY) * scaleY) + 'px';
+                el.style.border = '2px dashed rgba(0,200,50,0.9)';
+                overlayEl.appendChild(el);
+            }
+
+            for (const d of $detections.slice(0,200)) {
+                const el = document.createElement('div');
+                el.className = 'box';
+                // detections are stored in pixels relative to original source; we assume normalized 0..1 if >1 range
+                let x = d.x; let y = d.y; let w = d.width; let h = d.height;
+                if (x <= 1 && y <= 1 && w <= 1 && h <= 1) {
+                    x = x * scaleX; y = y * scaleY; w = w * scaleX; h = h * scaleY;
+                }
+                el.style.left = Math.round(x) + 'px';
+                el.style.top = Math.round(y) + 'px';
+                el.style.width = Math.round(w) + 'px';
+                el.style.height = Math.round(h) + 'px';
+                el.style.border = d.className === 'artifact_green' ? '2px solid rgba(0,255,0,0.9)' : '2px solid rgba(200,0,200,0.9)';
+                overlayEl.appendChild(el);
+            }
+        }
+    }
 </script>
 
 <style>
@@ -239,47 +285,4 @@
     </aside>
 </div>
 
-<script>
-    // Render detection boxes and zones onto overlay when detections or zones update
-    $: if (overlayEl) {
-        // clear
-        overlayEl.innerHTML = "";
-        const v = vidEl;
-        if (!v) return;
-        const rect = v.getBoundingClientRect();
-        const scaleX = rect.width; const scaleY = rect.height;
-
-        for (const z of $zones) {
-            // draw zone polygon bounding box
-            if (!z.points || z.points.length === 0) continue;
-            const minX = Math.min(...z.points.map(p => p.x));
-            const minY = Math.min(...z.points.map(p => p.y));
-            const maxX = Math.max(...z.points.map(p => p.x));
-            const maxY = Math.max(...z.points.map(p => p.y));
-            const el = document.createElement('div');
-            el.className = 'box';
-            el.style.left = Math.round(minX * scaleX) + 'px';
-            el.style.top = Math.round(minY * scaleY) + 'px';
-            el.style.width = Math.round((maxX - minX) * scaleX) + 'px';
-            el.style.height = Math.round((maxY - minY) * scaleY) + 'px';
-            el.style.border = '2px dashed rgba(0,200,50,0.9)';
-            overlayEl.appendChild(el);
-        }
-
-        for (const d of $detections.slice(0,200)) {
-            const el = document.createElement('div');
-            el.className = 'box';
-            // detections are stored in pixels relative to original source; we assume normalized 0..1 if >1 range
-            let x = d.x; let y = d.y; let w = d.width; let h = d.height;
-            if (x <= 1 && y <= 1 && w <= 1 && h <= 1) {
-                x = x * scaleX; y = y * scaleY; w = w * scaleX; h = h * scaleY;
-            }
-            el.style.left = Math.round(x) + 'px';
-            el.style.top = Math.round(y) + 'px';
-            el.style.width = Math.round(w) + 'px';
-            el.style.height = Math.round(h) + 'px';
-            el.style.border = d.className === 'artifact_green' ? '2px solid rgba(0,255,0,0.9)' : '2px solid rgba(200,0,200,0.9)';
-            overlayEl.appendChild(el);
-        }
-    }
-</script>
+ 

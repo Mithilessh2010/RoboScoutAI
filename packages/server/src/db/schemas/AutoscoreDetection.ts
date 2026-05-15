@@ -4,6 +4,8 @@ export interface IAutoscoreDetection extends Document {
     jobId: mongoose.Types.ObjectId;
     frameNumber: number;
     timestamp: number;
+    frameWidth?: number;
+    frameHeight?: number;
     className: "artifact_green" | "artifact_purple";
     classId: number;
     confidence: number;
@@ -20,6 +22,8 @@ const autoscoreDetectionSchema = new Schema<IAutoscoreDetection>(
         jobId: { type: Schema.Types.ObjectId, ref: "AutoscoreJob", required: true, index: true },
         frameNumber: { type: Number, required: true },
         timestamp: { type: Number, required: true },
+        frameWidth: { type: Number, default: null },
+        frameHeight: { type: Number, default: null },
         className: { type: String, enum: ["artifact_green", "artifact_purple"], required: true },
         classId: { type: Number, required: true },
         confidence: { type: Number, required: true },

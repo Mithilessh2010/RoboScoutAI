@@ -34,6 +34,8 @@ type PredictionJson = {
     source?: string;
     source_type?: "image" | "video";
     model: string;
+    width?: number;
+    height?: number;
     fps?: number;
     frame_stride?: number;
     detections: PredictionFrame[];
@@ -319,6 +321,8 @@ async function downloadVideoUrl(videoUrl: string, jobId: string) {
 }
 
 function flattenDetections(jobId: any, prediction: PredictionJson) {
+    let frameWidth = prediction.width ?? null;
+    let frameHeight = prediction.height ?? null;
     return prediction.detections.flatMap((frame) =>
         frame.detections.map((detection) => {
             let [x1, y1, x2, y2] = detection.bbox_xyxy;
@@ -326,6 +330,8 @@ function flattenDetections(jobId: any, prediction: PredictionJson) {
                 jobId,
                 frameNumber: frame.frame,
                 timestamp: frame.timestamp,
+                frameWidth,
+                frameHeight,
                 className: detection.class_name,
                 classId: detection.class_id,
                 confidence: detection.confidence,
