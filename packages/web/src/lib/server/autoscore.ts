@@ -330,6 +330,22 @@ export async function runArtifactDetection(jobId: string) {
     }
 }
 
+export async function getAutoscoreLogs(jobId: string, limit = 1000) {
+    await ensureAutoscoreDb();
+    const mongoose = await import("mongoose");
+    const ObjectId = mongoose.Types.ObjectId;
+    const db = mongoose.connection.db;
+
+    const logs = await db
+        .collection("autoscorelogs")
+        .find({ jobId: new ObjectId(jobId) })
+        .sort({ createdAt: 1 })
+        .limit(limit)
+        .toArray();
+
+    return logs;
+}
+
 async function resolveJobVideoSource(job: any) {
     if (job.videoPath) {
         let sourcePath = resolveRepoPath(job.videoPath);
