@@ -79,7 +79,7 @@
     }
     function polygon(ctx:any, points:any[], w:number,h:number,color:string){ if(points.length<2)return; ctx.strokeStyle=color;ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x*w,p.y*h):ctx.moveTo(p.x*w,p.y*h)); if(points.length>2)ctx.closePath();ctx.stroke(); }
     function fmt(t:number){ let m=Math.floor(t/60), s=(t%60).toFixed(1).padStart(4,"0"); return `${String(m).padStart(2,"0")}:${s}`; }
-    onMount(load);
+    onMount(() => load().catch((err) => (errorMessage = err instanceof Error ? err.message : String(err))));
 </script>
 <Head title="DECODE Autoscore Cockpit" />
 <WidthProvider width="1440px">
