@@ -123,7 +123,9 @@
             });
             let data = await readApiResponse(response);
             if (!response.ok) throw new Error(data.message ?? data.error ?? "Artifact detection failed.");
-            message = `Artifact detection complete: ${data.summary.totalDetections} detections.`;
+            message = data.started
+                ? "Artifact detection started on the Fly.io worker. Refresh in a bit to see results."
+                : `Artifact detection complete: ${data.summary.totalDetections} detections.`;
             await loadJobs();
             let refreshed = jobs.find((item) => item._id === job._id);
             if (refreshed) await selectJob(refreshed);

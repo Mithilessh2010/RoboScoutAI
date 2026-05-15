@@ -14,6 +14,8 @@ const execFileAsync = promisify(execFile);
 export const AUTOSCORE_MODEL_PATH = "services/video-processing/models/decode/best.pt";
 export const AUTOSCORE_PREDICT_SCRIPT = "scripts/decode/predict_video_decode.py";
 export const AUTOSCORE_PREDICTIONS_DIR = "decode-training/predictions";
+const AUTOSCORE_WORKER_URL = process.env.AUTOSCORE_WORKER_URL?.replace(/\/$/, "");
+const AUTOSCORE_WORKER_SECRET = process.env.AUTOSCORE_WORKER_SECRET;
 
 type ArtifactClassName = "artifact_green" | "artifact_purple";
 
@@ -139,6 +141,11 @@ export async function runBackendArtifactDetection(jobId: string) {
     if (!job) {
         throw new Error("Autoscore job not found.");
     }
+
+    if (AUTOSCORE_WORKER_URL) {
+        return startRemoteArtifactDetection(job);
+    }
+
     let sourcePath = await resolveJobVideoSource(job);
     let modelPath = resolveRepoPath(AUTOSCORE_MODEL_PATH);
     let scriptPath = resolveRepoPath(AUTOSCORE_PREDICT_SCRIPT);
@@ -234,6 +241,44 @@ export async function runBackendArtifactDetection(jobId: string) {
         });
         throw err;
     }
+}
+
+async function startRemoteArtifactDetection(job: any) {
+    if (!job.videoUrl) {
+        throw new Error("Fly autoscore worker requires a videoUrl. Upload the video or provide a direct video URL.");
+    }
+
+    await job.updateOne({ status: "running", errorMessage: null, phase: "artifact_detection" });
+    let response = await fetch(`${AUTOSCORE_WORKER_URL}/run-artifact-detection`, {
+        method: "POST",
+        headers: {
+            "content-type": "application/json",
+            ...(AUTOSCORE_WORKER_SECRET ? { authorization: `Bearer ${AUTOSCORE_WORKER_SECRET}` } : {}),
+        },
+        body: JSON.stringify({
+            jobId: String(job._id),
+            videoUrl: job.videoUrl,
+            stride: 90,
+            conf: 0.25,
+            saveAnnotated: true,
+        }),
+    });
+
+    let body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        let message = body.error || body.detail || `Autoscore worker failed to start (${response.status}).`;
+        await AutoscoreJob.findByIdAndUpdate(job._id, {
+            status: "failed",
+            errorMessage: message,
+        });
+        throw new Error(message);
+    }
+
+    return {
+        started: true,
+        jobId: String(job._id),
+        message: "Artifact detection started on the Fly.io worker.",
+    };
 }
 
 async function resolveJobVideoSource(job: any) {
