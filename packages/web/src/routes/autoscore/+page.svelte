@@ -2,6 +2,7 @@
     import Card from "$lib/components/Card.svelte";
     import Head from "$lib/components/Head.svelte";
     import WidthProvider from "$lib/components/WidthProvider.svelte";
+    import { upload } from "@vercel/blob/client";
     import { onMount } from "svelte";
 
     type Summary = {
@@ -37,6 +38,7 @@
     let message = "";
     let errorMessage = "";
     let fileInputKey = 0;
+    let uploadProgress = 0;
 
     $: greenCount = selectedSummary?.artifactGreenCount ?? selectedJob?.summary?.artifactGreenCount ?? 0;
     $: purpleCount = selectedSummary?.artifactPurpleCount ?? selectedJob?.summary?.artifactPurpleCount ?? 0;
@@ -65,30 +67,34 @@
         busy = true;
         message = "";
         errorMessage = "";
+        uploadProgress = 0;
         try {
+            let sourceVideoUrl = videoUrl.trim();
             if (videoFile) {
-                throw new Error(
-                    "Direct browser video uploads are disabled on Vercel because match videos exceed Vercel's request size limit. Paste a public Video URL instead."
-                );
-            }
-            let response: Response;
-            if (videoFile) {
-                let form = new FormData();
-                form.set("videoName", videoName);
-                form.set("videoPath", videoUrl ? "" : videoPath);
-                form.set("videoUrl", videoUrl);
-                form.set("videoFile", videoFile);
-                response = await fetch("/api/autoscore/jobs", {
-                    method: "POST",
-                    body: form,
+                message = "Uploading video to storage...";
+                let safeName = videoFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+                let blob = await upload(`autoscore-videos/${Date.now()}-${safeName}`, videoFile, {
+                    access: "public",
+                    handleUploadUrl: "/api/autoscore/upload-video",
+                    multipart: true,
+                    onUploadProgress: ({ percentage }) => {
+                        uploadProgress = percentage;
+                    },
                 });
-            } else {
-                response = await fetch("/api/autoscore/jobs", {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({ videoName, videoPath: videoUrl ? "" : videoPath, videoUrl }),
-                });
+                sourceVideoUrl = blob.url;
+                videoUrl = blob.url;
+                videoPath = "";
             }
+
+            let response = await fetch("/api/autoscore/jobs", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    videoName,
+                    videoPath: sourceVideoUrl ? "" : videoPath,
+                    videoUrl: sourceVideoUrl,
+                }),
+            });
 
             let data = await readApiResponse(response);
             if (!response.ok) throw new Error(data.message ?? data.error ?? "Could not create autoscore job.");
@@ -96,11 +102,13 @@
             selectedDetections = [];
             selectedSummary = null;
             message = "Autoscore job created.";
+            clearUpload();
             await loadJobs();
         } catch (err) {
             errorMessage = err instanceof Error ? err.message : String(err);
         } finally {
             busy = false;
+            uploadProgress = 0;
         }
     }
 
@@ -214,8 +222,6 @@
                         on:change={(event) => {
                             videoFile = event.currentTarget.files?.[0] ?? null;
                             if (videoFile) {
-                                errorMessage =
-                                    "Direct video uploads are too large for Vercel. Clear this file and paste a Video URL instead.";
                                 videoName = videoName || videoFile.name;
                                 videoPath = "";
                                 videoUrl = "";
@@ -229,6 +235,10 @@
             {/if}
             <button type="submit" disabled={busy}>Create Job</button>
         </form>
+
+        {#if busy && uploadProgress > 0}
+            <p class="notice">Uploading video: {uploadProgress.toFixed(0)}%</p>
+        {/if}
 
         {#if message}
             <p class="notice">{message}</p>
