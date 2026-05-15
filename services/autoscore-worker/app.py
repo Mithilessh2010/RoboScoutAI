@@ -41,7 +41,8 @@ def database():
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL is not set.")
-    return MongoClient(database_url).get_default_database()
+    db_name = os.environ.get("MONGODB_DB_NAME", "test")
+    return MongoClient(database_url)[db_name]
 
 
 def check_secret(authorization: str | None) -> None:
@@ -56,23 +57,33 @@ def check_secret(authorization: str | None) -> None:
 def normalize_video_url(video_url: str) -> str:
     match = re.search(r"drive\.google\.com/file/d/([^/]+)", video_url)
     if match:
-        return f"https://drive.google.com/uc?export=download&id={match.group(1)}"
+        return f"https://drive.usercontent.google.com/download?id={match.group(1)}&export=download&confirm=t"
     return video_url
+
+
+def filename_suffix_from_headers(headers: requests.structures.CaseInsensitiveDict[str]) -> str | None:
+    content_disposition = headers.get("content-disposition", "")
+    match = re.search(r'filename\*?=(?:UTF-8\'\')?"?([^";]+)', content_disposition)
+    if not match:
+        return None
+    suffix = Path(match.group(1)).suffix
+    return suffix or None
 
 
 def download_video(video_url: str, job_id: str) -> Path:
     VIDEO_DIR.mkdir(parents=True, exist_ok=True)
     normalized_url = normalize_video_url(video_url)
     suffix = Path(normalized_url.split("?", 1)[0]).suffix or ".mp4"
-    target = VIDEO_DIR / f"{job_id}{suffix}"
 
-    with requests.get(normalized_url, stream=True, timeout=120) as response:
+    with requests.get(normalized_url, stream=True, timeout=(30, 600)) as response:
         response.raise_for_status()
         content_type = response.headers.get("content-type", "")
         if "text/html" in content_type:
             raise RuntimeError(
                 "The video URL returned an HTML page instead of a video. Use a direct video URL or upload the file."
             )
+        suffix = filename_suffix_from_headers(response.headers) or suffix
+        target = VIDEO_DIR / f"{job_id}{suffix}"
         with target.open("wb") as file:
             shutil.copyfileobj(response.raw, file)
 
@@ -201,7 +212,6 @@ def run_job(request: RunRequest) -> None:
             {"_id": job_object_id},
             {"$set": {"status": "failed", "errorMessage": str(exc), "updatedAt": utcnow()}},
         )
-        raise
     finally:
         shutil.rmtree(VIDEO_DIR, ignore_errors=True)
 
