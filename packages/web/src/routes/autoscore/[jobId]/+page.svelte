@@ -10,7 +10,7 @@
     let job: any = null, summary: any = null, detections: any[] = [], zones: any[] = [], events: any[] = [];
     let video: HTMLVideoElement, overlay: HTMLCanvasElement;
     let currentTime = 0, activeZone = "goal_red", draftPoints: any[] = [];
-    let toggles: Record<string, boolean> = { zones: true, detections: true, labels: true, confidence: true, pattern: true };
+    let toggles: Record<string, boolean> = { zones: true, detections: true, labels: true, confidence: true, pattern: true, rampCounts: true, depotCounts: true };
     let busy = false, errorMessage = "", message = "";
     let manualEvent = { alliance:"red", eventType:"classified", points:3, confidence:1, reason:"Manual review adjustment" };
     let penalty = { committingAlliance:"red", foulType:"minor", count:1, timestamp:null, note:"" };
@@ -19,6 +19,12 @@
     $: jobId = $page.params.jobId;
     $: visibleDetections = detections.filter((d) => Math.abs(d.timestamp - currentTime) < 1.6);
     $: live = scoreAt(currentTime);
+    $: liveZoneCounts = {
+        redRamp: countInZone("ramp_red"),
+        blueRamp: countInZone("ramp_blue"),
+        redDepot: countInZone("depot_red"),
+        blueDepot: countInZone("depot_blue"),
+    };
 
     async function api(path: string, init?: RequestInit) {
         let response = await fetch(path, init);
@@ -69,6 +75,24 @@
         for(let event of events.filter((e)=>e.timestamp<=t)) out[event.alliance]+=event.points;
         return out;
     }
+    function countInZone(zoneType:string){
+        let zone = zones.find((item) => item.zoneType === zoneType);
+        if (!zone) return null;
+        return visibleDetections.filter((d) => pointInPolygon(detectionCenter(d), zone.coordinates)).length;
+    }
+    function detectionCenter(d:any){
+        if (d.centerX != null && d.centerY != null && d.centerX <= 1 && d.centerY <= 1) return { x:d.centerX, y:d.centerY };
+        return { x:((d.x ?? 0) + (d.width ?? 0)/2) / (d.frameWidth || 1), y:((d.y ?? 0) + (d.height ?? 0)/2) / (d.frameHeight || 1) };
+    }
+    function pointInPolygon(point:any, polygon:any[]){
+        let inside = false;
+        for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){
+            let xi=polygon[i].x, yi=polygon[i].y, xj=polygon[j].x, yj=polygon[j].y;
+            let intersects = yi > point.y !== yj > point.y && point.x < ((xj-xi)*(point.y-yi))/(yj-yi+0.0000001)+xi;
+            if(intersects) inside = !inside;
+        }
+        return inside;
+    }
     function draw() {
         if (!overlay || !video) return;
         let ctx = overlay.getContext("2d")!, w=overlay.width=overlay.clientWidth, h=overlay.height=overlay.clientHeight;
@@ -101,6 +125,14 @@
 <div class="scoreboard">
 <article class="red"><h2>Red {job.redTeam1 || "?"} / {job.redTeam2 || "?"}</h2><b>{live.red}</b><small>AUTO {summary?.redAutoScore??0} · TELEOP {summary?.redTeleopScore??0} · RP {summary?.redRP??0}</small></article>
 <article class="blue"><h2>Blue {job.blueTeam1 || "?"} / {job.blueTeam2 || "?"}</h2><b>{live.blue}</b><small>AUTO {summary?.blueAutoScore??0} · TELEOP {summary?.blueTeleopScore??0} · RP {summary?.blueRP??0}</small></article>
+</div>
+<div class="telemetry">
+{#if toggles.rampCounts}
+<article><h3>Ramp Counts</h3><p>Red {liveZoneCounts.redRamp ?? "-"} · Blue {liveZoneCounts.blueRamp ?? "-"}</p><small>Stable scoring uses smoothed saved detections; this panel shows the current visible sample.</small></article>
+{/if}
+{#if toggles.depotCounts}
+<article><h3>Depot Counts</h3><p>Red {liveZoneCounts.redDepot ?? "-"} · Blue {liveZoneCounts.blueDepot ?? "-"}</p><small>Depot points are finalized at end of match.</small></article>
+{/if}
 </div>
 </section>
 <aside>
@@ -141,11 +173,21 @@
 <div class="grid"><select bind:value={gate.alliance}><option>red</option><option>blue</option></select><input bind:value={gate.note}/></div><button on:click={addGate}>Add Manual Gate Event</button>
 <div class="grid"><select bind:value={penalty.committingAlliance}><option>red</option><option>blue</option></select><select bind:value={penalty.foulType}><option>minor</option><option>major</option></select><input type="number" bind:value={penalty.count}/><input bind:value={penalty.note}/></div><button on:click={addPenalty}>Add Penalty</button>
 </section>
-<section><h2>Summary</h2><pre>{JSON.stringify(summary, null, 2)}</pre></section>
+<section>
+<h2>Score Breakdown</h2>
+<dl>
+<dt>Red classified / overflow</dt><dd>{summary?.redClassifiedCount ?? 0} / {summary?.redOverflowCount ?? 0}</dd>
+<dt>Blue classified / overflow</dt><dd>{summary?.blueClassifiedCount ?? 0} / {summary?.blueOverflowCount ?? 0}</dd>
+<dt>Red depot / pattern / base</dt><dd>{summary?.redDepotScore ?? 0} / {summary?.redPatternScore ?? 0} / {summary?.redBaseScore ?? 0}</dd>
+<dt>Blue depot / pattern / base</dt><dd>{summary?.blueDepotScore ?? 0} / {summary?.bluePatternScore ?? 0} / {summary?.blueBaseScore ?? 0}</dd>
+<dt>Estimated winner</dt><dd>{summary?.winner ?? "-"}</dd>
+</dl>
+<h2>Summary JSON</h2><pre>{JSON.stringify(summary, null, 2)}</pre>
+</section>
 </div>
 {:else}<p>Loading autoscore job...</p>{/if}
 {#if message}<p class="notice">{message}</p>{/if}{#if errorMessage}<p class="error">{errorMessage}</p>{/if}
 </Card></WidthProvider>
 <style>
-h1,h2,h3,p{margin:0} header{display:flex;justify-content:space-between;margin-bottom:16px}.cockpit{display:grid;grid-template-columns:minmax(0,2fr) 360px;gap:16px}.video-wrap{position:relative;background:#050505;aspect-ratio:16/9}.video-wrap video,.video-wrap canvas{position:absolute;inset:0;width:100%;height:100%}.video-wrap canvas{pointer-events:auto}.toolbar,.scoreboard,.grid{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.scoreboard article{flex:1;padding:12px;border:1px solid var(--sep-color);border-radius:8px;display:grid}.scoreboard b{font-size:32px}.red b{color:#ff5c70}.blue b{color:#5fa8ff} aside{display:grid;gap:10px} input,select,button{padding:9px;border:1px solid var(--sep-color);border-radius:8px;background:var(--form-bg-color);color:var(--text-color)}button{background:var(--theme-color);color:var(--theme-text-color);cursor:pointer}.secondary{background:var(--form-bg-color);color:var(--text-color)} aside label{display:grid;grid-template-columns:1fr 90px 90px;gap:6px;align-items:center}.zone-list{display:flex;gap:6px;flex-wrap:wrap}.zone-list span{border:1px dashed var(--sep-color);padding:5px;border-radius:6px}.lower{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:16px;margin-top:18px}.event-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:start;margin-top:6px}.event{display:block;width:100%;text-align:left}.event small{display:block}.event em{margin-left:6px}.delete-event{background:var(--form-bg-color);color:var(--text-color)}.notice,.error{padding:10px;margin-top:12px;border-radius:8px}.notice{background:var(--green-stat-bg-color)}.error{background:var(--red-stat-bg-color)}pre{white-space:pre-wrap;font-size:12px;max-height:360px;overflow:auto}@media(max-width:1000px){.cockpit,.lower{grid-template-columns:1fr}}
+h1,h2,h3,p{margin:0} header{display:flex;justify-content:space-between;margin-bottom:16px}.cockpit{display:grid;grid-template-columns:minmax(0,2fr) 360px;gap:16px}.video-wrap{position:relative;background:#050505;aspect-ratio:16/9}.video-wrap video,.video-wrap canvas{position:absolute;inset:0;width:100%;height:100%}.video-wrap canvas{pointer-events:auto}.toolbar,.scoreboard,.grid,.telemetry{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.scoreboard article,.telemetry article{flex:1;padding:12px;border:1px solid var(--sep-color);border-radius:8px;display:grid;gap:4px}.scoreboard b{font-size:32px}.red b{color:#ff5c70}.blue b{color:#5fa8ff}.telemetry p{font-size:20px}.telemetry small{color:var(--secondary-text-color)} aside{display:grid;gap:10px} input,select,button{padding:9px;border:1px solid var(--sep-color);border-radius:8px;background:var(--form-bg-color);color:var(--text-color)}button{background:var(--theme-color);color:var(--theme-text-color);cursor:pointer}.secondary{background:var(--form-bg-color);color:var(--text-color)} aside label{display:grid;grid-template-columns:1fr 90px 90px;gap:6px;align-items:center}.zone-list{display:flex;gap:6px;flex-wrap:wrap}.zone-list span{border:1px dashed var(--sep-color);padding:5px;border-radius:6px}.lower{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:16px;margin-top:18px}.event-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:start;margin-top:6px}.event{display:block;width:100%;text-align:left}.event small{display:block}.event em{margin-left:6px}.delete-event{background:var(--form-bg-color);color:var(--text-color)}dl{display:grid;grid-template-columns:1fr auto;gap:6px;margin:8px 0 16px}.notice,.error{padding:10px;margin-top:12px;border-radius:8px}.notice{background:var(--green-stat-bg-color)}.error{background:var(--red-stat-bg-color)}pre{white-space:pre-wrap;font-size:12px;max-height:360px;overflow:auto}@media(max-width:1000px){.cockpit,.lower{grid-template-columns:1fr}}
 </style>
