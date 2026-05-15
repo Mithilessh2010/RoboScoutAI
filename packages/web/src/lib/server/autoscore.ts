@@ -14,6 +14,7 @@ const MODEL_PATH = "services/video-processing/models/decode/best.pt";
 const PREDICT_SCRIPT = "scripts/decode/predict_video_decode.py";
 const PREDICTIONS_DIR = "decode-training/predictions";
 const UPLOADS_DIR = "decode-training/uploads";
+const MAX_DIRECT_UPLOAD_BYTES = 4 * 1024 * 1024;
 const BUNDLED_MODEL_PATH = fileURLToPath(
     new URL("../../../../../services/video-processing/models/decode/best.pt", import.meta.url)
 );
@@ -143,6 +144,10 @@ export function resolveRepoPath(value: string) {
     return path.isAbsolute(value) ? value : path.join(repoRoot(), value);
 }
 
+function resolveOutputDir() {
+    return process.env.VERCEL ? path.join("/tmp", PREDICTIONS_DIR) : resolveRepoPath(PREDICTIONS_DIR);
+}
+
 function resolveBundledRuntimeFile(repoRelativePath: string, bundledPath: string) {
     let repoPath = resolveRepoPath(repoRelativePath);
     return existsSync(repoPath) ? repoPath : bundledPath;
@@ -193,6 +198,9 @@ export async function parseCreateJobRequest(event: RequestEvent) {
         let file = form.get("videoFile");
 
         if (file instanceof File && file.size > 0) {
+            if (file.size > MAX_DIRECT_UPLOAD_BYTES) {
+                throw error(413, "Video upload is too large for this API. Use a video URL or run locally.");
+            }
             let safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
             let uploadDir = resolveRepoPath(UPLOADS_DIR);
             await mkdir(uploadDir, { recursive: true });
@@ -226,15 +234,12 @@ export async function runArtifactDetection(jobId: string) {
     if (!job) {
         throw error(404, "Autoscore job not found.");
     }
-    if (!job.videoPath) {
-        throw error(400, "This Phase 1 detector requires a local videoPath or uploaded file.");
-    }
 
     let root = repoRoot();
-    let sourcePath = resolveRepoPath(job.videoPath);
+    let sourcePath = await resolveJobVideoSource(job);
     let modelPath = resolveBundledRuntimeFile(MODEL_PATH, BUNDLED_MODEL_PATH);
     let scriptPath = resolveBundledRuntimeFile(PREDICT_SCRIPT, BUNDLED_PREDICT_SCRIPT);
-    let outputDir = resolveRepoPath(PREDICTIONS_DIR);
+    let outputDir = resolveOutputDir();
 
     await job.updateOne({
         status: "running",
@@ -323,6 +328,49 @@ export async function runArtifactDetection(jobId: string) {
         });
         throw error(500, message);
     }
+}
+
+async function resolveJobVideoSource(job: any) {
+    if (job.videoPath) {
+        let sourcePath = resolveRepoPath(job.videoPath);
+        if (!existsSync(sourcePath)) {
+            throw error(
+                400,
+                "That local video path is not available on this server. On Vercel, create the job with a public video URL instead of a local Mac path."
+            );
+        }
+        return sourcePath;
+    }
+
+    if (job.videoUrl) {
+        return downloadVideoUrl(job.videoUrl, String(job._id));
+    }
+
+    throw error(400, "This Phase 1 detector requires a local videoPath, uploaded file, or videoUrl.");
+}
+
+async function downloadVideoUrl(videoUrl: string, jobId: string) {
+    let url: URL;
+    try {
+        url = new URL(videoUrl);
+    } catch {
+        throw error(400, "Video URL is invalid.");
+    }
+    if (!["http:", "https:"].includes(url.protocol)) {
+        throw error(400, "Video URL must use http or https.");
+    }
+
+    let response = await fetch(url);
+    if (!response.ok) {
+        throw error(400, `Could not download video URL: ${response.status} ${response.statusText}`);
+    }
+
+    let ext = path.extname(url.pathname) || ".mp4";
+    let videoDir = path.join("/tmp", "decode-autoscore-videos");
+    await mkdir(videoDir, { recursive: true });
+    let videoPath = path.join(videoDir, `${jobId}${ext}`);
+    await writeFile(videoPath, Buffer.from(await response.arrayBuffer()));
+    return videoPath;
 }
 
 function flattenDetections(jobId: any, prediction: PredictionJson) {

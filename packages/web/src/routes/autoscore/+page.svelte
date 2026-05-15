@@ -31,6 +31,7 @@
     let selectedSummary: Summary | null = null;
     let videoName = "Tech-Tite";
     let videoPath = "decode-training/raw-videos/unsorted/Tech-Tite.mov";
+    let videoUrl = "";
     let videoFile: File | null = null;
     let busy = false;
     let message = "";
@@ -45,8 +46,8 @@
 
     async function loadJobs() {
         let response = await fetch("/api/autoscore/jobs");
-        let data = await response.json();
-        if (!response.ok) throw new Error(data.message ?? "Could not load autoscore jobs.");
+        let data = await readApiResponse(response);
+        if (!response.ok) throw new Error(data.message ?? data.error ?? "Could not load autoscore jobs.");
         jobs = data.jobs;
         if (!selectedJob && jobs.length) {
             await selectJob(jobs[0]);
@@ -60,16 +61,33 @@
         message = "";
         errorMessage = "";
         try {
-            let form = new FormData();
-            form.set("videoName", videoName);
-            form.set("videoPath", videoPath);
-            if (videoFile) form.set("videoFile", videoFile);
-            let response = await fetch("/api/autoscore/jobs", {
-                method: "POST",
-                body: form,
-            });
-            let data = await response.json();
-            if (!response.ok) throw new Error(data.message ?? "Could not create autoscore job.");
+            if (videoFile && videoFile.size > 4 * 1024 * 1024) {
+                throw new Error(
+                    "Vercel cannot accept large match-video uploads through this API. Use a video URL, or run uploads locally."
+                );
+            }
+
+            let response: Response;
+            if (videoFile) {
+                let form = new FormData();
+                form.set("videoName", videoName);
+                form.set("videoPath", videoUrl ? "" : videoPath);
+                form.set("videoUrl", videoUrl);
+                form.set("videoFile", videoFile);
+                response = await fetch("/api/autoscore/jobs", {
+                    method: "POST",
+                    body: form,
+                });
+            } else {
+                response = await fetch("/api/autoscore/jobs", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ videoName, videoPath: videoUrl ? "" : videoPath, videoUrl }),
+                });
+            }
+
+            let data = await readApiResponse(response);
+            if (!response.ok) throw new Error(data.message ?? data.error ?? "Could not create autoscore job.");
             selectedJob = data.job;
             selectedDetections = [];
             selectedSummary = null;
@@ -91,8 +109,8 @@
             let response = await fetch(`/api/autoscore/jobs/${job._id}/run-artifact-detection`, {
                 method: "POST",
             });
-            let data = await response.json();
-            if (!response.ok) throw new Error(data.message ?? "Artifact detection failed.");
+            let data = await readApiResponse(response);
+            if (!response.ok) throw new Error(data.message ?? data.error ?? "Artifact detection failed.");
             message = `Artifact detection complete: ${data.summary.totalDetections} detections.`;
             await loadJobs();
             let refreshed = jobs.find((item) => item._id === job._id);
@@ -116,10 +134,26 @@
         selectedSummary = job.summary ?? null;
         if (job.status !== "complete") return;
         let response = await fetch(`/api/autoscore/jobs/${job._id}/detections?limit=500`);
-        let data = await response.json();
-        if (!response.ok) throw new Error(data.message ?? "Could not load detections.");
+        let data = await readApiResponse(response);
+        if (!response.ok) throw new Error(data.message ?? data.error ?? "Could not load detections.");
         selectedSummary = data.summary;
         selectedDetections = data.detections;
+    }
+
+    async function readApiResponse(response: Response) {
+        let text = await response.text();
+        if (!text) return {};
+        try {
+            return JSON.parse(text);
+        } catch {
+            if (response.status === 413) {
+                return {
+                    error:
+                        "The video upload is too large for Vercel's request limit. Use a video URL or run this locally.",
+                };
+            }
+            return { error: text };
+        }
     }
 
     function confidence(value: number) {
@@ -155,6 +189,10 @@
                 <input bind:value={videoPath} placeholder="decode-training/raw-videos/unsorted/Tech-Tite.mov" />
             </label>
             <label>
+                <span>Video URL</span>
+                <input bind:value={videoUrl} placeholder="https://..." />
+            </label>
+            <label>
                 <span>Upload video</span>
                 <input
                     type="file"
@@ -164,6 +202,7 @@
                         if (videoFile) {
                             videoName = videoName || videoFile.name;
                             videoPath = "";
+                            videoUrl = "";
                         }
                     }}
                 />
@@ -354,7 +393,7 @@
 
     .job-form {
         display: grid;
-        grid-template-columns: 1fr 1.6fr 1.2fr auto;
+        grid-template-columns: 1fr 1.3fr 1.3fr 1fr auto;
         gap: var(--lg-gap);
         align-items: end;
         margin-bottom: var(--lg-gap);

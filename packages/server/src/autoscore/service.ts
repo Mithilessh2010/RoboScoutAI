@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { execFile } from "child_process";
 import { existsSync } from "fs";
-import { mkdir, readFile } from "fs/promises";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { promisify } from "util";
 import { connectDB } from "../db/mongodb";
@@ -54,6 +54,12 @@ export function repoRoot() {
 
 export function resolveRepoPath(value: string) {
     return path.isAbsolute(value) ? value : path.join(repoRoot(), value);
+}
+
+function resolveOutputDir() {
+    return process.env.VERCEL
+        ? path.join("/tmp", AUTOSCORE_PREDICTIONS_DIR)
+        : resolveRepoPath(AUTOSCORE_PREDICTIONS_DIR);
 }
 
 export function serializeDoc(doc: any) {
@@ -133,14 +139,10 @@ export async function runBackendArtifactDetection(jobId: string) {
     if (!job) {
         throw new Error("Autoscore job not found.");
     }
-    if (!job.videoPath) {
-        throw new Error("Phase 1 artifact detection requires a backend-accessible local videoPath.");
-    }
-
-    let sourcePath = resolveRepoPath(job.videoPath);
+    let sourcePath = await resolveJobVideoSource(job);
     let modelPath = resolveRepoPath(AUTOSCORE_MODEL_PATH);
     let scriptPath = resolveRepoPath(AUTOSCORE_PREDICT_SCRIPT);
-    let outputDir = resolveRepoPath(AUTOSCORE_PREDICTIONS_DIR);
+    let outputDir = resolveOutputDir();
 
     if (!existsSync(modelPath)) {
         throw new Error(`Missing local model file: ${AUTOSCORE_MODEL_PATH}`);
@@ -149,7 +151,7 @@ export async function runBackendArtifactDetection(jobId: string) {
         throw new Error(`Missing prediction script: ${AUTOSCORE_PREDICT_SCRIPT}`);
     }
     if (!existsSync(sourcePath)) {
-        throw new Error(`Video is not available to the backend: ${job.videoPath}`);
+        throw new Error(`Video is not available to the backend: ${sourcePath}`);
     }
 
     await job.updateOne({ status: "running", errorMessage: null, phase: "artifact_detection" });
@@ -232,6 +234,43 @@ export async function runBackendArtifactDetection(jobId: string) {
         });
         throw err;
     }
+}
+
+async function resolveJobVideoSource(job: any) {
+    if (job.videoPath) {
+        let sourcePath = resolveRepoPath(job.videoPath);
+        if (!existsSync(sourcePath)) {
+            throw new Error(
+                "That local video path is not available on this server. On Vercel, create the job with a public video URL instead of a local Mac path."
+            );
+        }
+        return sourcePath;
+    }
+
+    if (job.videoUrl) {
+        return downloadVideoUrl(job.videoUrl, String(job._id));
+    }
+
+    throw new Error("Phase 1 artifact detection requires a local videoPath or videoUrl.");
+}
+
+async function downloadVideoUrl(videoUrl: string, jobId: string) {
+    let url = new URL(videoUrl);
+    if (!["http:", "https:"].includes(url.protocol)) {
+        throw new Error("Video URL must use http or https.");
+    }
+
+    let response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Could not download video URL: ${response.status} ${response.statusText}`);
+    }
+
+    let ext = path.extname(url.pathname) || ".mp4";
+    let videoDir = path.join("/tmp", "decode-autoscore-videos");
+    await mkdir(videoDir, { recursive: true });
+    let videoPath = path.join(videoDir, `${jobId}${ext}`);
+    await writeFile(videoPath, Buffer.from(await response.arrayBuffer()));
+    return videoPath;
 }
 
 function flattenDetections(jobId: any, prediction: PredictionJson) {
