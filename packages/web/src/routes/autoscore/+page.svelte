@@ -24,6 +24,8 @@
         predictionJsonPath?: string | null;
         annotatedFramesPath?: string | null;
         summary?: Summary | null;
+        progress?: number;
+        lastLog?: { message: string; level?: string; createdAt?: string } | null;
     };
 
     let jobs: Job[] = [];
@@ -302,6 +304,10 @@
                         <strong>{selectedJob?.status ?? "-"}</strong>
                     </div>
                     <div>
+                        <span>Progress</span>
+                        <strong>{selectedJob?.progress ?? 0}%</strong>
+                    </div>
+                    <div>
                         <span>Total detections</span>
                         <strong>{totalDetections}</strong>
                     </div>
@@ -332,6 +338,13 @@
                         {#if selectedJob.annotatedFramesPath}
                             <span>{selectedJob.annotatedFramesPath}</span>
                         {/if}
+                    </div>
+                {/if}
+
+                {#if selectedJob?.lastLog}
+                    <div class="paths">
+                        <h4>Last backend log</h4>
+                        <div>{selectedJob.lastLog.message}</div>
                     </div>
                 {/if}
 
