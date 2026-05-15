@@ -10,6 +10,7 @@
   let message = "";
   let uploadProgress = 0;
   let videoFile: File | null = null;
+  const uploadUrl = "https://roboscoutai-autoscore-worker.fly.dev/upload-video";
   let form = {
     matchName: "",
     eventName: "",
@@ -37,12 +38,8 @@
     try {
       let videoUrl = form.videoUrl.trim();
       if (videoFile) {
-        let uploadConfigResponse = await fetch("/api/autoscore/upload-video");
-        let uploadConfig = await uploadConfigResponse.json();
-        if (!uploadConfigResponse.ok)
-          throw new Error(uploadConfig.error ?? "Could not prepare upload.");
-        let uploaded = await uploadToWorker(uploadConfig.uploadUrl, videoFile);
-        let ready = await waitForUpload(uploadConfig.uploadUrl, uploaded.uploadId);
+        let uploaded = await uploadToWorker(uploadUrl, videoFile);
+        let ready = await waitForUpload(uploadUrl, uploaded.uploadId);
         videoUrl = ready.videoUrl;
       }
       let response = await fetch("/api/autoscore/jobs", {
@@ -100,7 +97,9 @@
       let response = await fetch(`${workerBaseUrl}/uploads/${uploadId}`);
       let data = await response.json();
       if (!response.ok)
-        throw new Error(data.detail ?? data.error ?? "Could not read upload status.");
+        throw new Error(
+          data.detail ?? data.error ?? "Could not read upload status."
+        );
       if (data.status === "ready") return data;
       if (data.status === "failed")
         throw new Error(data.errorMessage ?? "Video processing failed.");
