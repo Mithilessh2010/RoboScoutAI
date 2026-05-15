@@ -363,43 +363,95 @@ def health() -> dict[str, Any]:
     }
 
 
+def process_uploaded_video(upload_object_id: ObjectId, raw_path: Path, original_name: str | None) -> None:
+    db = database()
+    mp4_path = raw_path.with_suffix(".transcoded.mp4")
+    try:
+        transcode_video(raw_path, mp4_path)
+        bucket = video_bucket()
+        with mp4_path.open("rb") as source:
+            video_id = bucket.upload_from_stream(
+                f"{raw_path.stem}.mp4",
+                source,
+                metadata={
+                    "originalName": original_name,
+                    "contentType": "video/mp4",
+                    "createdAt": utcnow(),
+                },
+            )
+        db.autoscorevideouploads.update_one(
+            {"_id": upload_object_id},
+            {
+                "$set": {
+                    "status": "ready",
+                    "videoId": video_id,
+                    "videoUrl": f"{PUBLIC_BASE_URL}/videos/{video_id}",
+                    "contentType": "video/mp4",
+                    "sizeBytes": mp4_path.stat().st_size,
+                    "updatedAt": utcnow(),
+                }
+            },
+        )
+    except Exception as exc:
+        db.autoscorevideouploads.update_one(
+            {"_id": upload_object_id},
+            {"$set": {"status": "failed", "errorMessage": str(exc), "updatedAt": utcnow()}},
+        )
+    finally:
+        raw_path.unlink(missing_ok=True)
+        mp4_path.unlink(missing_ok=True)
+
+
 @app.post("/upload-video")
-async def upload_video(file: UploadFile = File(...)) -> dict[str, Any]:
+async def upload_video(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     suffix = Path(file.filename or "video.mov").suffix or ".mov"
     upload_id = uuid.uuid4().hex
     raw_path = UPLOAD_DIR / f"{upload_id}{suffix}"
-    mp4_path = UPLOAD_DIR / f"{upload_id}.transcoded.mp4"
 
     try:
         with raw_path.open("wb") as output:
             while chunk := await file.read(1024 * 1024):
                 output.write(chunk)
-
-        transcode_video(raw_path, mp4_path)
-        bucket = video_bucket()
-        with mp4_path.open("rb") as source:
-            video_id = bucket.upload_from_stream(
-                f"{upload_id}.mp4",
-                source,
-                metadata={
-                    "originalName": file.filename,
-                    "contentType": "video/mp4",
-                    "createdAt": utcnow(),
-                },
-            )
-
+        now = utcnow()
+        insert_result = database().autoscorevideouploads.insert_one(
+            {
+                "status": "processing",
+                "originalName": file.filename,
+                "createdAt": now,
+                "updatedAt": now,
+            }
+        )
+        background_tasks.add_task(process_uploaded_video, insert_result.inserted_id, raw_path, file.filename)
         return {
-            "videoId": str(video_id),
-            "videoUrl": f"{PUBLIC_BASE_URL}/videos/{video_id}",
-            "videoName": file.filename or raw_path.name,
-            "contentType": "video/mp4",
-            "sizeBytes": mp4_path.stat().st_size,
+            "uploadId": str(insert_result.inserted_id),
+            "status": "processing",
         }
+    except Exception:
+        raw_path.unlink(missing_ok=True)
+        raise
     finally:
         await file.close()
-        raw_path.unlink(missing_ok=True)
-        mp4_path.unlink(missing_ok=True)
+
+
+@app.get("/uploads/{upload_id}")
+def get_upload(upload_id: str) -> dict[str, Any]:
+    upload = database().autoscorevideouploads.find_one({"_id": ObjectId(upload_id)})
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload not found.")
+    return {
+        "uploadId": str(upload["_id"]),
+        "status": upload["status"],
+        "videoId": str(upload["videoId"]) if upload.get("videoId") else None,
+        "videoUrl": upload.get("videoUrl"),
+        "videoName": upload.get("originalName"),
+        "contentType": upload.get("contentType"),
+        "sizeBytes": upload.get("sizeBytes"),
+        "errorMessage": upload.get("errorMessage"),
+    }
 
 
 @app.get("/videos/{video_id}")

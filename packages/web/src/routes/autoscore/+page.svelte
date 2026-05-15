@@ -42,7 +42,8 @@
         if (!uploadConfigResponse.ok)
           throw new Error(uploadConfig.error ?? "Could not prepare upload.");
         let uploaded = await uploadToWorker(uploadConfig.uploadUrl, videoFile);
-        videoUrl = uploaded.videoUrl;
+        let ready = await waitForUpload(uploadConfig.uploadUrl, uploaded.uploadId);
+        videoUrl = ready.videoUrl;
       }
       let response = await fetch("/api/autoscore/jobs", {
         method: "POST",
@@ -67,7 +68,7 @@
   function uploadToWorker(
     uploadUrl: string,
     file: File
-  ): Promise<{ videoUrl: string }> {
+  ): Promise<{ uploadId: string }> {
     return new Promise((resolve, reject) => {
       let request = new XMLHttpRequest();
       request.open("POST", uploadUrl);
@@ -88,6 +89,24 @@
       formData.append("file", file);
       request.send(formData);
     });
+  }
+
+  async function waitForUpload(
+    uploadUrl: string,
+    uploadId: string
+  ): Promise<{ videoUrl: string }> {
+    let workerBaseUrl = uploadUrl.replace(/\/upload-video$/, "");
+    while (true) {
+      let response = await fetch(`${workerBaseUrl}/uploads/${uploadId}`);
+      let data = await response.json();
+      if (!response.ok)
+        throw new Error(data.detail ?? data.error ?? "Could not read upload status.");
+      if (data.status === "ready") return data;
+      if (data.status === "failed")
+        throw new Error(data.errorMessage ?? "Video processing failed.");
+      message = "Preparing playback video...";
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
   }
 
   function score(job: any) {
