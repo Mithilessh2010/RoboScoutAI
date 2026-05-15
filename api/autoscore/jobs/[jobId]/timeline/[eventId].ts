@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { deleteTimelineEvent, updateTimelineEvent } from "../../../../../../packages/server/src/autoscore/service";
+import { deleteTimelineEvent, updateTimelineEvent } from "../../../../../packages/server/src/autoscore/service";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     try {
