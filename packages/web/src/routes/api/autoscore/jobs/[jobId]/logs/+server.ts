@@ -1,13 +1,13 @@
 import type { RequestHandler } from "./$types";
 import { json } from "@sveltejs/kit";
-import { connectDB } from "$lib/server/db/mongodb";
+import { ensureAutoscoreDb } from "$lib/server/autoscore";
 
 export const GET: RequestHandler = async ({ params }) => {
     const jobId = String(params.jobId ?? "");
     if (!jobId) return json({ error: "Missing jobId" }, { status: 400 });
 
     try {
-        await connectDB();
+        await ensureAutoscoreDb();
         // Use the existing mongoose connection
         const mongoose = await import("mongoose");
         const ObjectId = mongoose.Types.ObjectId;
