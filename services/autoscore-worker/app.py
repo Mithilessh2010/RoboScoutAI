@@ -367,9 +367,13 @@ def process_uploaded_video(upload_object_id: ObjectId, raw_path: Path, original_
     db = database()
     mp4_path = raw_path.with_suffix(".transcoded.mp4")
     try:
-        transcode_video(raw_path, mp4_path)
+        if raw_path.suffix.lower() == ".mp4" and raw_path.stat().st_size <= 50 * 1024 * 1024:
+            media_path = raw_path
+        else:
+            transcode_video(raw_path, mp4_path)
+            media_path = mp4_path
         bucket = video_bucket()
-        with mp4_path.open("rb") as source:
+        with media_path.open("rb") as source:
             video_id = bucket.upload_from_stream(
                 f"{raw_path.stem}.mp4",
                 source,
@@ -387,7 +391,7 @@ def process_uploaded_video(upload_object_id: ObjectId, raw_path: Path, original_
                     "videoId": video_id,
                     "videoUrl": f"{PUBLIC_BASE_URL}/videos/{video_id}",
                     "contentType": "video/mp4",
-                    "sizeBytes": mp4_path.stat().st_size,
+                    "sizeBytes": media_path.stat().st_size,
                     "updatedAt": utcnow(),
                 }
             },
