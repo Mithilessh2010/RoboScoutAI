@@ -1,5 +1,16 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { connectDB } from "../../../packages/server/src/db/mongodb";
+import mongoose from "mongoose";
+
+async function ensureDbConnection() {
+    if (mongoose.connection && mongoose.connection.readyState === 1) return;
+    const databaseUrl = process.env.DATABASE_URL || "mongodb://localhost:27017/ftcscout";
+    await mongoose.connect(databaseUrl, {
+        maxPoolSize: 10,
+        minPoolSize: 1,
+        serverSelectionTimeoutMS: 5000,
+        socketTimeoutMS: 45000,
+    });
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== "GET") {
@@ -8,11 +19,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     try {
-        await connectDB();
+        await ensureDbConnection();
         const jobId = String(req.query.jobId ?? "");
         if (!jobId) return res.status(400).json({ error: "Missing jobId" });
 
-        const mongoose = require("mongoose");
         const ObjectId = mongoose.Types.ObjectId;
         const db = mongoose.connection.db;
 
