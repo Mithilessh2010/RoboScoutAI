@@ -355,6 +355,9 @@ export async function getAutoscoreLogs(jobId: string, limit = 1000) {
     const mongoose = await import("mongoose");
     const ObjectId = mongoose.Types.ObjectId;
     const db = mongoose.connection.db;
+    if (!db) {
+        throw error(500, "MongoDB connection is unavailable.");
+    }
 
     const logs = await db
         .collection("autoscorelogs")

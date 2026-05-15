@@ -21,6 +21,8 @@ PREDICTIONS_DIR = Path(os.environ.get("AUTOSCORE_PREDICTIONS_DIR", "/tmp/decode-
 VIDEO_DIR = Path(os.environ.get("AUTOSCORE_VIDEO_DIR", "/tmp/decode-autoscore/videos"))
 DEFAULT_STRIDE = int(os.environ.get("AUTOSCORE_FRAME_STRIDE", "90"))
 DEFAULT_CONF = float(os.environ.get("AUTOSCORE_CONF", "0.25"))
+AUTO_SECONDS = 30
+MATCH_SECONDS = 150
 
 app = FastAPI(title="RoboScoutAI DECODE Autoscore Worker")
 
@@ -93,21 +95,34 @@ def download_video(video_url: str, job_id: str) -> Path:
 def flatten_detections(job_object_id: ObjectId, prediction: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     now = utcnow()
+    default_width = float(prediction.get("width", 0))
+    default_height = float(prediction.get("height", 0))
     for frame in prediction.get("detections", []):
+        timestamp = float(frame.get("timestamp", 0))
+        frame_width = float(frame.get("width", default_width))
+        frame_height = float(frame.get("height", default_height))
+        phase = "AUTO" if timestamp <= AUTO_SECONDS else "ENDGAME" if timestamp >= MATCH_SECONDS else "TELEOP"
         for detection in frame.get("detections", []):
             x1, y1, x2, y2 = detection["bbox_xyxy"]
+            class_name = detection["class_name"]
             rows.append(
                 {
                     "jobId": job_object_id,
                     "frameNumber": int(frame.get("frame", 0)),
-                    "timestamp": float(frame.get("timestamp", 0)),
-                    "className": detection["class_name"],
+                    "timestamp": timestamp,
+                    "phase": phase,
+                    "className": class_name,
                     "classId": int(detection["class_id"]),
+                    "artifactColor": "green" if class_name == "artifact_green" else "purple",
                     "confidence": float(detection["confidence"]),
                     "x": float(x1),
                     "y": float(y1),
                     "width": float(x2 - x1),
                     "height": float(y2 - y1),
+                    "centerX": float((x1 + x2) / 2),
+                    "centerY": float((y1 + y2) / 2),
+                    "frameWidth": frame_width,
+                    "frameHeight": frame_height,
                     "createdAt": now,
                     "updatedAt": now,
                 }
@@ -131,7 +146,7 @@ def run_job(request: RunRequest) -> None:
         {"_id": job_object_id},
         {
             "$set": {
-                "status": "running",
+                "status": "detecting",
                 "phase": "artifact_detection",
                 "errorMessage": None,
                 "updatedAt": now,
@@ -258,7 +273,7 @@ def run_job(request: RunRequest) -> None:
             {"_id": job_object_id},
             {
                 "$set": {
-                    "status": "complete",
+                    "status": "detection_complete",
                     "errorMessage": None,
                     "predictionJsonPath": str(prediction_json_path),
                     "annotatedFramesPath": str(annotated_frames_path),

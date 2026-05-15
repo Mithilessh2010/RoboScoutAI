@@ -13,8 +13,7 @@
     },
     "functions": {
         "api/**/*.ts": {
-            "maxDuration": 60,
-            "includeFiles": "{scripts/decode/predict_video_decode.py,services/video-processing/models/decode/best.pt}"
+            "maxDuration": 60
         }
     }
 }

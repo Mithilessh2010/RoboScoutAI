@@ -8,6 +8,10 @@ import { connectDB } from "../db/mongodb";
 import { AutoscoreDetection } from "../db/schemas/AutoscoreDetection";
 import { AutoscoreJob } from "../db/schemas/AutoscoreJob";
 import { AutoscoreSummary } from "../db/schemas/AutoscoreSummary";
+import { AutoscoreCalibrationZone } from "../db/schemas/AutoscoreCalibrationZone";
+import { AutoscorePenalty } from "../db/schemas/AutoscorePenalty";
+import { AutoscoreTimelineEvent } from "../db/schemas/AutoscoreTimelineEvent";
+import { AutoscoreGateEvent } from "../db/schemas/AutoscoreGateEvent";
 
 const execFileAsync = promisify(execFile);
 
@@ -89,9 +93,16 @@ export async function listAutoscoreJobs() {
 }
 
 export async function createAutoscoreJob(input: {
+    matchName?: string;
+    eventName?: string;
     videoName?: string;
     videoPath?: string;
     videoUrl?: string;
+    redTeam1?: string;
+    redTeam2?: string;
+    blueTeam1?: string;
+    blueTeam2?: string;
+    motif?: string;
 }) {
     await connectDB();
     let videoPath = input.videoPath?.trim() || "";
@@ -101,13 +112,44 @@ export async function createAutoscoreJob(input: {
     }
     let videoName = input.videoName?.trim() || path.basename(videoPath || videoUrl);
     let job = await AutoscoreJob.create({
+        matchName: input.matchName?.trim() || videoName,
+        eventName: input.eventName?.trim() || "",
         videoName,
         videoPath: videoPath || null,
         videoUrl: videoUrl || null,
-        status: "pending",
+        redTeam1: input.redTeam1?.trim() || "",
+        redTeam2: input.redTeam2?.trim() || "",
+        blueTeam1: input.blueTeam1?.trim() || "",
+        blueTeam2: input.blueTeam2?.trim() || "",
+        motif: input.motif || "unknown",
+        status: videoUrl ? "video_uploaded" : "pending",
         phase: "artifact_detection",
     });
     return serializeDoc(job);
+}
+
+export async function updateAutoscoreJob(jobId: string, input: any) {
+    await connectDB();
+    let allowed = [
+        "matchName",
+        "eventName",
+        "videoName",
+        "videoPath",
+        "videoUrl",
+        "status",
+        "phase",
+        "redTeam1",
+        "redTeam2",
+        "blueTeam1",
+        "blueTeam2",
+        "motif",
+        "confidenceThreshold",
+        "manualLeave",
+        "manualBase",
+    ];
+    let update = Object.fromEntries(allowed.filter((key) => key in input).map((key) => [key, input[key]]));
+    let job = await AutoscoreJob.findByIdAndUpdate(jobId, update, { new: true });
+    return job ? serializeDoc(job) : null;
 }
 
 export async function getAutoscoreJob(jobId: string) {
@@ -137,6 +179,134 @@ export async function getAutoscoreDetections(jobId: string, limit = 500) {
     };
 }
 
+export async function getCalibrationZones(jobId: string) {
+    await connectDB();
+    return (await AutoscoreCalibrationZone.find({ jobId }).sort({ zoneType: 1, index: 1 })).map(serializeDoc);
+}
+
+export async function upsertCalibrationZone(jobId: string, input: any) {
+    await connectDB();
+    let zone = await AutoscoreCalibrationZone.findOneAndUpdate(
+        { jobId, zoneType: input.zoneType, index: input.index ?? null },
+        {
+            jobId,
+            zoneType: input.zoneType,
+            alliance: input.alliance ?? null,
+            shapeType: input.shapeType ?? "polygon",
+            coordinates: input.coordinates ?? [],
+            frameTimestamp: input.frameTimestamp ?? 0,
+            color: input.color ?? null,
+            index: input.index ?? null,
+        },
+        { upsert: true, new: true }
+    );
+    await AutoscoreJob.findByIdAndUpdate(jobId, { status: "calibrated" });
+    return serializeDoc(zone);
+}
+
+export async function updateCalibrationZone(zoneId: string, input: any) {
+    await connectDB();
+    let zone = await AutoscoreCalibrationZone.findByIdAndUpdate(zoneId, input, { new: true });
+    return zone ? serializeDoc(zone) : null;
+}
+
+export async function deleteCalibrationZone(zoneId: string) {
+    await connectDB();
+    return AutoscoreCalibrationZone.findByIdAndDelete(zoneId);
+}
+
+export async function getTimeline(jobId: string) {
+    await connectDB();
+    return (await AutoscoreTimelineEvent.find({ jobId }).sort({ timestamp: 1, createdAt: 1 })).map(serializeDoc);
+}
+
+export async function createTimelineEvent(jobId: string, input: any) {
+    await connectDB();
+    let row = await AutoscoreTimelineEvent.create({ jobId, manualOverride: true, reviewed: false, ...input });
+    return serializeDoc(row);
+}
+
+export async function updateTimelineEvent(eventId: string, input: any) {
+    await connectDB();
+    let row = await AutoscoreTimelineEvent.findByIdAndUpdate(eventId, input, { new: true });
+    return row ? serializeDoc(row) : null;
+}
+
+export async function deleteTimelineEvent(eventId: string) {
+    await connectDB();
+    return AutoscoreTimelineEvent.findByIdAndDelete(eventId);
+}
+
+export async function getPenalties(jobId: string) {
+    await connectDB();
+    return (await AutoscorePenalty.find({ jobId }).sort({ createdAt: 1 })).map(serializeDoc);
+}
+
+export async function createPenalty(jobId: string, input: any) {
+    await connectDB();
+    let committingAlliance = input.committingAlliance;
+    let creditedAlliance = committingAlliance === "red" ? "blue" : "red";
+    let pointsPer = input.foulType === "major" ? 15 : 5;
+    let row = await AutoscorePenalty.create({
+        jobId,
+        timestamp: input.timestamp ?? null,
+        committingAlliance,
+        creditedAlliance,
+        foulType: input.foulType,
+        count: input.count ?? 1,
+        points: pointsPer * (input.count ?? 1),
+        note: input.note ?? null,
+    });
+    return serializeDoc(row);
+}
+
+export async function updatePenalty(penaltyId: string, input: any) {
+    await connectDB();
+    if (input.committingAlliance) input.creditedAlliance = input.committingAlliance === "red" ? "blue" : "red";
+    if (input.foulType || input.count) {
+        let current = await AutoscorePenalty.findById(penaltyId);
+        let foulType = input.foulType ?? current?.foulType;
+        let count = input.count ?? current?.count ?? 1;
+        input.points = (foulType === "major" ? 15 : 5) * count;
+    }
+    let row = await AutoscorePenalty.findByIdAndUpdate(penaltyId, input, { new: true });
+    return row ? serializeDoc(row) : null;
+}
+
+export async function deletePenalty(penaltyId: string) {
+    await connectDB();
+    return AutoscorePenalty.findByIdAndDelete(penaltyId);
+}
+
+export async function getGateEvents(jobId: string) {
+    await connectDB();
+    return (await AutoscoreGateEvent.find({ jobId }).sort({ timestamp: 1 })).map(serializeDoc);
+}
+
+export async function createGateEvent(jobId: string, input: any) {
+    await connectDB();
+    let row = await AutoscoreGateEvent.create({
+        jobId,
+        alliance: input.alliance,
+        timestamp: input.timestamp,
+        eventType: "manual_gate_opened",
+        releasedCount: input.releasedCount ?? null,
+        note: input.note ?? null,
+    });
+    return serializeDoc(row);
+}
+
+export async function updateGateEvent(gateEventId: string, input: any) {
+    await connectDB();
+    let row = await AutoscoreGateEvent.findByIdAndUpdate(gateEventId, input, { new: true });
+    return row ? serializeDoc(row) : null;
+}
+
+export async function deleteGateEvent(gateEventId: string) {
+    await connectDB();
+    return AutoscoreGateEvent.findByIdAndDelete(gateEventId);
+}
+
 export async function runBackendArtifactDetection(jobId: string) {
     await connectDB();
     let job = await AutoscoreJob.findById(jobId);
@@ -163,7 +333,7 @@ export async function runBackendArtifactDetection(jobId: string) {
         throw new Error(`Video is not available to the backend: ${sourcePath}`);
     }
 
-    await job.updateOne({ status: "running", errorMessage: null, phase: "artifact_detection" });
+    await job.updateOne({ status: "detecting", errorMessage: null, phase: "artifact_detection" });
 
     try {
         await mkdir(outputDir, { recursive: true });
@@ -218,7 +388,7 @@ export async function runBackendArtifactDetection(jobId: string) {
 
         let annotatedFramesPath = path.join(outputDir, path.parse(sourcePath).name, "annotated-frames");
         await AutoscoreJob.findByIdAndUpdate(job._id, {
-            status: "complete",
+            status: "detection_complete",
             errorMessage: null,
             predictionJsonPath,
             annotatedFramesPath,
@@ -250,7 +420,7 @@ async function startRemoteArtifactDetection(job: any) {
         throw new Error("Fly autoscore worker requires a videoUrl. Upload the video or provide a direct video URL.");
     }
 
-    await job.updateOne({ status: "running", errorMessage: null, phase: "artifact_detection" });
+    await job.updateOne({ status: "detecting", errorMessage: null, phase: "artifact_detection" });
     let response = await fetch(`${AUTOSCORE_WORKER_URL}/run-artifact-detection`, {
         method: "POST",
         headers: {
@@ -334,11 +504,15 @@ function flattenDetections(jobId: any, prediction: PredictionJson) {
                 frameHeight,
                 className: detection.class_name,
                 classId: detection.class_id,
+                phase: frame.timestamp <= 30 ? "AUTO" : frame.timestamp >= 150 ? "ENDGAME" : "TELEOP",
+                artifactColor: detection.class_name === "artifact_green" ? "green" : "purple",
                 confidence: detection.confidence,
                 x: x1,
                 y: y1,
                 width: x2 - x1,
                 height: y2 - y1,
+                centerX: frameWidth ? (x1 + x2) / 2 / frameWidth : null,
+                centerY: frameHeight ? (y1 + y2) / 2 / frameHeight : null,
             };
         })
     );

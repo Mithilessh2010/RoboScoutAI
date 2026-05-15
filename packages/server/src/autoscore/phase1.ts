@@ -1,7 +1,7 @@
 import { connectDB } from "../db/mongodb";
 import { AutoscoreDetection } from "../db/schemas/AutoscoreDetection";
 import { AutoscoreTimelineEvent } from "../db/schemas/AutoscoreTimelineEvent";
-import { ManualCalibrationZone } from "../db/schemas/ManualCalibrationZone";
+import { AutoscoreCalibrationZone } from "../db/schemas/AutoscoreCalibrationZone";
 
 const POINTS: Record<string, number> = {
     artifact_green: 5,
@@ -12,13 +12,13 @@ export async function runPhase1Autoscore(jobId: string, options: { openRouterKey
     await connectDB();
 
     const detections = await AutoscoreDetection.find({ jobId }).sort({ timestamp: 1 }).lean();
-    const zones = await ManualCalibrationZone.find({ jobId }).lean();
+    const zones = await AutoscoreCalibrationZone.find({ jobId }).lean();
     const normalizedZones = zones
-        .map((zone) => ({
-            zoneName: zone.zoneName,
-            points: (zone.points || []).map((point: any) => ({ x: point.x, y: point.y })),
+        .map((zone: any) => ({
+            zoneName: zone.zoneType,
+            points: (zone.coordinates || []).map((point: any) => ({ x: point.x, y: point.y })),
         }))
-        .filter((zone) => zone.points.length >= 3);
+        .filter((zone: any) => zone.points.length >= 3);
 
     // Simple event generation: create artifact_detected + score events, and annotate zone transitions when possible.
     let lastScoreAt = -Infinity;

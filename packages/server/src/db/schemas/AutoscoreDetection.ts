@@ -8,11 +8,16 @@ export interface IAutoscoreDetection extends Document {
     frameHeight?: number;
     className: "artifact_green" | "artifact_purple";
     classId: number;
+    phase?: "AUTO" | "TELEOP" | "ENDGAME";
+    artifactColor?: "green" | "purple";
     confidence: number;
     x: number;
     y: number;
     width: number;
     height: number;
+    centerX?: number;
+    centerY?: number;
+    trackId?: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -26,11 +31,16 @@ const autoscoreDetectionSchema = new Schema<IAutoscoreDetection>(
         frameHeight: { type: Number, default: null },
         className: { type: String, enum: ["artifact_green", "artifact_purple"], required: true },
         classId: { type: Number, required: true },
+        phase: { type: String, enum: ["AUTO", "TELEOP", "ENDGAME"], default: null },
+        artifactColor: { type: String, enum: ["green", "purple"], default: null },
         confidence: { type: Number, required: true },
         x: { type: Number, required: true },
         y: { type: Number, required: true },
         width: { type: Number, required: true },
         height: { type: Number, required: true },
+        centerX: { type: Number, default: null },
+        centerY: { type: Number, default: null },
+        trackId: { type: String, default: null, index: true },
     },
     { timestamps: true }
 );

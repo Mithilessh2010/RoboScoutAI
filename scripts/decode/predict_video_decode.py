@@ -54,13 +54,13 @@ def predict_video(model, source, out_dir, model_path, conf, stride, save_annotat
     if not cap.isOpened():
         raise SystemExit(f"Could not open video: {source}")
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
     frames_dir = out_dir / source.stem / "annotated-frames"
     if save_annotated:
         frames_dir.mkdir(parents=True, exist_ok=True)
     writer = None
     if save_video:
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
         annotated_video = out_dir / f"{source.stem}_annotated.mp4"
         writer = cv2.VideoWriter(str(annotated_video), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
 
@@ -75,7 +75,7 @@ def predict_video(model, source, out_dir, model_path, conf, stride, save_annotat
             continue
         result = model.predict(frame, verbose=False, conf=conf)[0]
         detections = collect_detections(result, model)
-        results.append({"frame": frame_idx, "timestamp": frame_idx / fps, "detections": detections})
+        results.append({"frame": frame_idx, "timestamp": frame_idx / fps, "width": width, "height": height, "detections": detections})
         if save_annotated or writer is not None:
             annotated = result.plot()
             if save_annotated:
