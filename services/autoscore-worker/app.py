@@ -369,7 +369,7 @@ async def upload_video(file: UploadFile = File(...)) -> dict[str, Any]:
     suffix = Path(file.filename or "video.mov").suffix or ".mov"
     upload_id = uuid.uuid4().hex
     raw_path = UPLOAD_DIR / f"{upload_id}{suffix}"
-    mp4_path = UPLOAD_DIR / f"{upload_id}.mp4"
+    mp4_path = UPLOAD_DIR / f"{upload_id}.transcoded.mp4"
 
     try:
         with raw_path.open("wb") as output:
