@@ -3,6 +3,7 @@
   import Head from "$lib/components/Head.svelte";
   import WidthProvider from "$lib/components/WidthProvider.svelte";
   import { onDestroy, onMount } from "svelte";
+  import * as publicEnv from '$env/static/public';
   import { page } from "$app/stores";
   export let suppliedJobId = "";
   export let embedded = false;
@@ -30,6 +31,7 @@
   let advancedMode = false;
   let busy = false, message = "", errorMessage = "";
   let uploadPoller: ReturnType<typeof setInterval> | null = null;
+  let consecutivePollErrors = 0;
   let detectionPoller: ReturnType<typeof setInterval> | null = null;
   let detectionWindow = { start: -Infinity, end: -Infinity };
   let loadingDetectionWindow = false;
@@ -116,7 +118,8 @@
     beginStatus("preparing_playback");
     message = "Upload complete. Preparing playback video...";
     let timedOut = false;
-    const PREP_TIMEOUT_MS = 120000; // increased from 30s to 120s to allow longer processing
+    const WORKER_URL = ((publicEnv as any).PUBLIC_VIDEO_PROCESSING_API_URL || 'https://roboscoutai-autoscore-worker.fly.dev').replace(/\/+$/g, '');
+    const PREP_TIMEOUT_MS = Number((publicEnv as any).PUBLIC_AUTOSCORE_PREP_TIMEOUT_MS) || 120000;
     let timeout = setTimeout(() => {
       timedOut = true;
       failStatus("preparing_playback", `Playback preparation timed out after ${PREP_TIMEOUT_MS / 1000} seconds.`);
@@ -127,7 +130,20 @@
     uploadPoller = setInterval(async () => {
       if (timedOut) return;
       try {
-        let response = await fetch(`https://roboscoutai-autoscore-worker.fly.dev/uploads/${job.uploadId}`);
+        console.debug('[autoscore] polling upload status', job.uploadId, WORKER_URL);
+        let response = await fetch(`${WORKER_URL}/uploads/${job.uploadId}`);
+        if (!response.ok) {
+          consecutivePollErrors += 1;
+          playbackMeta.exactError = `Upload status fetch failed: ${response.status}`;
+          if (consecutivePollErrors > 5) {
+            clearTimeout(timeout);
+            failStatus('preparing_playback', `Playback worker unreachable (status ${response.status}).`);
+            errorMessage = `Playback worker unreachable (status ${response.status}).`;
+            clearInterval(uploadPoller!); uploadPoller = null;
+          }
+          return;
+        }
+        consecutivePollErrors = 0;
         let upload = await response.json();
         playbackMeta = {
           ...playbackMeta,
@@ -156,9 +172,16 @@
           clearInterval(uploadPoller!); uploadPoller = null;
         }
       } catch (error) {
+        consecutivePollErrors += 1;
         let detail = error instanceof Error ? error.message : String(error);
         playbackMeta.exactError = detail;
         errorMessage = detail;
+        console.error('[autoscore] upload poll error', detail);
+        if (consecutivePollErrors > 5) {
+          clearTimeout(timeout);
+          failStatus('preparing_playback', `Playback worker unreachable: ${detail}`);
+          clearInterval(uploadPoller!); uploadPoller = null;
+        }
       }
     }, 1800);
   }
