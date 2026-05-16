@@ -3,7 +3,7 @@
   import Head from "$lib/components/Head.svelte";
   import WidthProvider from "$lib/components/WidthProvider.svelte";
   import { onDestroy, onMount } from "svelte";
-  import * as publicEnv from '$env/static/public';
+  import { env as publicEnv } from '$env/dynamic/public';
   import { page } from "$app/stores";
   export let suppliedJobId = "";
   export let embedded = false;
@@ -118,8 +118,8 @@
     beginStatus("preparing_playback");
     message = "Upload complete. Preparing playback video...";
     let timedOut = false;
-    const WORKER_URL = ((publicEnv as any).PUBLIC_VIDEO_PROCESSING_API_URL || 'https://roboscoutai-autoscore-worker.fly.dev').replace(/\/+$/g, '');
-    const PREP_TIMEOUT_MS = Number((publicEnv as any).PUBLIC_AUTOSCORE_PREP_TIMEOUT_MS) || 120000;
+    const WORKER_URL = (publicEnv.PUBLIC_VIDEO_PROCESSING_API_URL || 'https://roboscoutai-autoscore-worker.fly.dev').replace(/\/+$/g, '');
+    const PREP_TIMEOUT_MS = Number(publicEnv.PUBLIC_AUTOSCORE_PREP_TIMEOUT_MS) || 120000;
     let timeout = setTimeout(() => {
       timedOut = true;
       failStatus("preparing_playback", `Playback preparation timed out after ${PREP_TIMEOUT_MS / 1000} seconds.`);
@@ -153,17 +153,23 @@
           playbackUrl: upload.videoUrl ?? "",
         };
         if (upload.status === "ready" && upload.videoUrl) {
+          clearTimeout(timeout);
+          completeStatus("preparing_playback");
+          beginStatus("playback_ready");
           playbackMeta.playbackHttpStatus = await verifyPlaybackUrl(upload.videoUrl);
+          if (playbackMeta.playbackHttpStatus == null || playbackMeta.playbackHttpStatus >= 400) {
+            failStatus("playback_ready", `Playback video could not be verified (${playbackMeta.playbackHttpStatus ?? "network error"}).`);
+            errorMessage = `Playback video could not be verified (${playbackMeta.playbackHttpStatus ?? "network error"}).`;
+            clearInterval(uploadPoller!); uploadPoller = null;
+            return;
+          }
           job = await api(`/api/autoscore/jobs/${jobId}`, {
             method: "PUT",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ videoUrl: upload.videoUrl, status: "video_uploaded" }),
           }).then((result) => result.job);
-          completeStatus("preparing_playback");
-          beginStatus("playback_ready");
           message = "Playback video ready. Waiting for browser metadata...";
           startMetadataTimeout();
-          clearTimeout(timeout);
           clearInterval(uploadPoller!); uploadPoller = null;
         } else if (upload.status === "failed") {
           clearTimeout(timeout);
