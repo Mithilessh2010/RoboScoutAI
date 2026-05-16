@@ -70,7 +70,7 @@
     file: File
   ): Promise<{ uploadId: string }> {
     let workerBaseUrl = uploadUrl.replace(/\/upload-video$/, "");
-    let chunkSize = 8 * 1024 * 1024;
+    let chunkSize = 1 * 1024 * 1024;
     let totalChunks = Math.ceil(file.size / chunkSize);
     let createResponse = await fetch(`${workerBaseUrl}/chunked-uploads`, {
       method: "POST",
