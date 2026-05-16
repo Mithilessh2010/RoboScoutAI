@@ -19,6 +19,8 @@ import {
   recalculateDecodeScore,
   runFullDecodeAutoscore,
 } from "../packages/server/src/autoscore/decode";
+import { connectDB } from "../packages/server/src/db/mongodb";
+import mongoose from "mongoose";
 
 function pathParts(req: NextApiRequest): string[] {
   let raw = Array.isArray(req.query.path) ? req.query.path.join("/") : String(req.query.path ?? "");
@@ -112,6 +114,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (resource === "gate-events") {
       if (req.method === "POST") return res.status(201).json({ gateEvent: await createGateEvent(jobId, req.body ?? {}) });
       return methodNotAllowed(res, "POST");
+    }
+
+    if (resource === "logs") {
+      if (req.method !== "GET") return methodNotAllowed(res, "GET");
+      await connectDB();
+      let ObjectId = mongoose.Types.ObjectId;
+      let db = mongoose.connection.db;
+      let logs = await db
+        .collection("autoscorelogs")
+        .find({ jobId: new ObjectId(jobId) })
+        .sort({ createdAt: 1 })
+        .limit(1000)
+        .toArray();
+      return res.status(200).json({ logs });
     }
 
     return res.status(404).json({ error: "Autoscore route not found" });
