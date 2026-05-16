@@ -39,6 +39,7 @@
   let calibrationMode: "dual" | "solo_red" | "solo_blue" = "dual";
   let busy = false, message = "", errorMessage = "";
   let uploadPoller: ReturnType<typeof setInterval> | null = null;
+  let detectionPoller: ReturnType<typeof setInterval> | null = null;
   let autoAdvanceZone = true;
   let toggles: any = { zones: true, detections: true, labels: true, confidence: true, eventMarkers: true, rampCounts: true, depotCounts: true };
   let manualEvent = { alliance: "red", eventType: "classified", points: 3, confidence: 1, reason: "Manual review adjustment" };
@@ -156,9 +157,31 @@
   }
   async function run(url: string, success: string) {
     busy = true; errorMessage = "";
-    try { await api(url, { method: "POST" }); message = success; await load(); }
+    try {
+      await api(url, { method: "POST" });
+      message = success;
+      await load();
+      if (url.includes("detection")) startDetectionPolling();
+    }
     catch (error) { errorMessage = error instanceof Error ? error.message : String(error); }
     finally { busy = false; }
+  }
+  function startDetectionPolling() {
+    if (detectionPoller) return;
+    detectionPoller = setInterval(async () => {
+      try {
+        await load();
+        if (job?.status !== "detecting" && job?.status !== "running") {
+          clearInterval(detectionPoller!);
+          detectionPoller = null;
+          message = job?.status === "detection_complete"
+            ? "Detection complete. Review overlays or run full DECODE autoscore."
+            : message;
+        }
+      } catch (error) {
+        errorMessage = error instanceof Error ? error.message : String(error);
+      }
+    }, 2500);
   }
   async function saveZone() {
     let coordinates = draftRect ? rectPoints(draftRect) : selectedZone?.coordinates;
@@ -323,7 +346,10 @@
     finally { busy = false; }
   }
   onMount(() => load().catch((error) => errorMessage = error instanceof Error ? error.message : String(error)));
-  onDestroy(() => uploadPoller && clearInterval(uploadPoller));
+  onDestroy(() => {
+    if (uploadPoller) clearInterval(uploadPoller);
+    if (detectionPoller) clearInterval(detectionPoller);
+  });
 </script>
 
 {#if !embedded}<Head title="DECODE Autoscore Cockpit" />{/if}
