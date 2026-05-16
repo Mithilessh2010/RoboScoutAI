@@ -41,8 +41,25 @@
     let started = await fetch(`${worker}/chunked-uploads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ filename: file.name, totalChunks }) });
     let upload = await started.json(); if (!started.ok) throw new Error(upload.detail ?? "Could not start upload.");
     for (let index = 0; index < totalChunks; index++) {
-      let response = await fetch(`${worker}/chunked-uploads/${upload.uploadId}/chunks/${index}`, { method: "PUT", body: file.slice(index * chunkSize, (index + 1) * chunkSize) });
-      if (!response.ok) throw new Error("Chunk upload failed.");
+      let chunk = file.slice(index * chunkSize, (index + 1) * chunkSize);
+      let attempts = 0;
+      while (true) {
+        if (!navigator.onLine) throw new Error("Network offline. Upload paused.");
+        try {
+          let response = await fetch(`${worker}/chunked-uploads/${upload.uploadId}/chunks/${index}`, { method: "PUT", body: chunk });
+          if (!response.ok) {
+            let detail = await response.text().catch(() => "");
+            throw new Error(`Chunk upload failed: ${response.status} ${detail}`);
+          }
+          break;
+        } catch (err) {
+          attempts++;
+          if (attempts > 5) throw new Error(`Chunk ${index} failed after ${attempts} attempts: ${err instanceof Error ? err.message : String(err)}`);
+          message = `Network issue — retrying chunk ${index + 1}/${totalChunks} (attempt ${attempts})...`;
+          let backoff = 500 * Math.pow(2, attempts - 1);
+          await new Promise((resolve) => setTimeout(resolve, backoff));
+        }
+      }
       uploadProgress = ((index + 1) / totalChunks) * 100;
       message = `Uploading video ${index + 1} of ${totalChunks} chunks...`;
     }
