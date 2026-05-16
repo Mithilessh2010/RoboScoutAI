@@ -38,7 +38,10 @@
     try {
       let videoUrl = form.videoUrl.trim();
       if (videoFile) {
-        let uploaded = await uploadToWorker(uploadUrl, videoFile);
+        let uploaded =
+          videoFile.size > 50 * 1024 * 1024
+            ? await uploadToWorkerInChunks(uploadUrl, videoFile)
+            : await uploadToWorker(uploadUrl, videoFile);
         let ready = await waitForUpload(uploadUrl, uploaded.uploadId);
         videoUrl = ready.videoUrl;
       }
@@ -60,6 +63,47 @@
       busy = false;
       uploadProgress = 0;
     }
+  }
+
+  async function uploadToWorkerInChunks(
+    uploadUrl: string,
+    file: File
+  ): Promise<{ uploadId: string }> {
+    let workerBaseUrl = uploadUrl.replace(/\/upload-video$/, "");
+    let chunkSize = 8 * 1024 * 1024;
+    let totalChunks = Math.ceil(file.size / chunkSize);
+    let createResponse = await fetch(`${workerBaseUrl}/chunked-uploads`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filename: file.name, totalChunks }),
+    });
+    let upload = await createResponse.json();
+    if (!createResponse.ok)
+      throw new Error(upload.detail ?? upload.error ?? "Could not start upload.");
+
+    for (let index = 0; index < totalChunks; index += 1) {
+      let chunk = file.slice(index * chunkSize, (index + 1) * chunkSize);
+      let response = await fetch(
+        `${workerBaseUrl}/chunked-uploads/${upload.uploadId}/chunks/${index}`,
+        { method: "PUT", body: chunk }
+      );
+      let data = await response.json();
+      if (!response.ok)
+        throw new Error(data.detail ?? data.error ?? "Chunk upload failed.");
+      uploadProgress = ((index + 1) / totalChunks) * 100;
+      message = `Uploading video chunk ${index + 1} of ${totalChunks}...`;
+    }
+
+    let completeResponse = await fetch(
+      `${workerBaseUrl}/chunked-uploads/${upload.uploadId}/complete`,
+      { method: "POST" }
+    );
+    let completed = await completeResponse.json();
+    if (!completeResponse.ok)
+      throw new Error(
+        completed.detail ?? completed.error ?? "Could not finish upload."
+      );
+    return completed;
   }
 
   function uploadToWorker(

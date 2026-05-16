@@ -25,6 +25,7 @@ PREDICT_SCRIPT = ROOT / "scripts/decode/predict_video_decode.py"
 PREDICTIONS_DIR = Path(os.environ.get("AUTOSCORE_PREDICTIONS_DIR", "/tmp/decode-autoscore/predictions"))
 VIDEO_DIR = Path(os.environ.get("AUTOSCORE_VIDEO_DIR", "/tmp/decode-autoscore/videos"))
 UPLOAD_DIR = Path(os.environ.get("AUTOSCORE_UPLOAD_DIR", "/tmp/decode-autoscore/uploads"))
+CHUNK_DIR = Path(os.environ.get("AUTOSCORE_CHUNK_DIR", "/tmp/decode-autoscore/chunks"))
 DEFAULT_STRIDE = int(os.environ.get("AUTOSCORE_FRAME_STRIDE", "90"))
 DEFAULT_CONF = float(os.environ.get("AUTOSCORE_CONF", "0.25"))
 AUTO_SECONDS = 30
@@ -41,7 +42,7 @@ app.add_middleware(
         "http://localhost:5174",
         "http://127.0.0.1:5174",
     ],
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -52,6 +53,11 @@ class RunRequest(BaseModel):
     stride: int = DEFAULT_STRIDE
     conf: float = DEFAULT_CONF
     saveAnnotated: bool = True
+
+
+class CreateChunkedUploadRequest(BaseModel):
+    filename: str
+    totalChunks: int
 
 
 def utcnow() -> datetime:
@@ -444,6 +450,88 @@ async def upload_video(
         raise
     finally:
         await file.close()
+
+
+@app.post("/chunked-uploads")
+def create_chunked_upload(request: CreateChunkedUploadRequest) -> dict[str, Any]:
+    if request.totalChunks < 1:
+        raise HTTPException(status_code=400, detail="totalChunks must be positive.")
+    now = utcnow()
+    insert_result = database().autoscorevideouploads.insert_one(
+        {
+            "status": "uploading",
+            "originalName": request.filename,
+            "totalChunks": request.totalChunks,
+            "receivedChunks": [],
+            "createdAt": now,
+            "updatedAt": now,
+        }
+    )
+    return {
+        "uploadId": str(insert_result.inserted_id),
+        "status": "uploading",
+        "totalChunks": request.totalChunks,
+    }
+
+
+@app.put("/chunked-uploads/{upload_id}/chunks/{chunk_index}")
+async def upload_chunk(upload_id: str, chunk_index: int, request: Request) -> dict[str, Any]:
+    db = database()
+    upload_object_id = ObjectId(upload_id)
+    upload = db.autoscorevideouploads.find_one({"_id": upload_object_id})
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload not found.")
+    if upload["status"] not in {"uploading", "processing"}:
+        raise HTTPException(status_code=409, detail="Upload is not accepting chunks.")
+    if chunk_index < 0 or chunk_index >= int(upload["totalChunks"]):
+        raise HTTPException(status_code=400, detail="Invalid chunk index.")
+
+    upload_dir = CHUNK_DIR / upload_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    chunk_path = upload_dir / f"{chunk_index:06d}.part"
+    with chunk_path.open("wb") as output:
+        async for chunk in request.stream():
+            output.write(chunk)
+
+    db.autoscorevideouploads.update_one(
+        {"_id": upload_object_id},
+        {
+            "$addToSet": {"receivedChunks": chunk_index},
+            "$set": {"updatedAt": utcnow()},
+        },
+    )
+    return {"received": True, "chunkIndex": chunk_index}
+
+
+@app.post("/chunked-uploads/{upload_id}/complete")
+def complete_chunked_upload(upload_id: str, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    db = database()
+    upload_object_id = ObjectId(upload_id)
+    upload = db.autoscorevideouploads.find_one({"_id": upload_object_id})
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload not found.")
+    total_chunks = int(upload["totalChunks"])
+    received_chunks = sorted(upload.get("receivedChunks", []))
+    if received_chunks != list(range(total_chunks)):
+        raise HTTPException(status_code=409, detail="Not all chunks have been uploaded.")
+
+    suffix = Path(upload.get("originalName") or "video.mov").suffix or ".mov"
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    raw_path = UPLOAD_DIR / f"{upload_id}{suffix}"
+    upload_dir = CHUNK_DIR / upload_id
+    with raw_path.open("wb") as output:
+        for chunk_index in range(total_chunks):
+            chunk_path = upload_dir / f"{chunk_index:06d}.part"
+            with chunk_path.open("rb") as source:
+                shutil.copyfileobj(source, output)
+
+    db.autoscorevideouploads.update_one(
+        {"_id": upload_object_id},
+        {"$set": {"status": "processing", "updatedAt": utcnow()}},
+    )
+    background_tasks.add_task(process_uploaded_video, upload_object_id, raw_path, upload.get("originalName"))
+    shutil.rmtree(upload_dir, ignore_errors=True)
+    return {"uploadId": upload_id, "status": "processing"}
 
 
 @app.get("/uploads/{upload_id}")
