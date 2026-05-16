@@ -347,13 +347,21 @@ export async function parseCreateJobRequest(event: RequestEvent) {
 }
 
 export async function runArtifactDetection(jobId: string) {
+  return runDetection(jobId, "artifact");
+}
+
+export async function runRobotDetection(jobId: string) {
+  return runDetection(jobId, "robot");
+}
+
+async function runDetection(jobId: string, detectorMode: "artifact" | "robot" | "both") {
   await ensureAutoscoreDb();
   let job = await AutoscoreJob.findById(jobId);
   if (!job) {
     throw error(404, "Autoscore job not found.");
   }
   if (AUTOSCORE_WORKER_URL) {
-    return startRemoteArtifactDetection(job);
+    return startRemoteArtifactDetection(job, detectorMode);
   }
 
   let root = repoRoot();
@@ -381,14 +389,15 @@ export async function runArtifactDetection(jobId: string) {
         sourcePath,
         "--model",
         modelPath,
-        ...(existsSync(robotModelPath)
+        ...(detectorMode !== "artifact" && existsSync(robotModelPath)
           ? ["--robot-model", robotModelPath]
           : []),
+        "--detector-mode",
+        detectorMode,
         "--stride",
-        "90",
+        detectorMode === "artifact" ? "30" : "45",
         "--conf",
         "0.25",
-        "--save-annotated",
         "--out",
         outputDir,
       ],
@@ -406,26 +415,31 @@ export async function runArtifactDetection(jobId: string) {
     let raw = await readFile(predictionJsonPath, "utf8");
     let prediction = JSON.parse(raw) as PredictionJson;
     let rows = flattenDetections(job._id, prediction);
-    let confidences = rows.map((row) => row.confidence);
-    let artifactGreenCount = rows.filter(
+    await AutoscoreDetection.deleteMany({
+      jobId: job._id,
+      detectorType:
+        detectorMode === "both" ? { $in: ["artifact", "robot"] } : detectorMode,
+    });
+    if (rows.length) {
+      await AutoscoreDetection.insertMany(rows);
+    }
+    let allRows = await AutoscoreDetection.find({ jobId: job._id }).lean();
+    let confidences = allRows.map((row) => row.confidence);
+    let artifactGreenCount = allRows.filter(
       (row) => row.className === "artifact_green"
     ).length;
-    let artifactPurpleCount = rows.filter(
+    let artifactPurpleCount = allRows.filter(
       (row) => row.className === "artifact_purple"
     ).length;
-    let robotDetectionCount = rows.filter(
+    let robotDetectionCount = allRows.filter(
       (row) => row.className === "robot"
     ).length;
-    let totalDetections = rows.length;
+    let totalDetections = allRows.length;
     let averageConfidence = confidences.length
       ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
       : 0;
     let maxConfidence = confidences.length ? Math.max(...confidences) : 0;
 
-    await AutoscoreDetection.deleteMany({ jobId: job._id });
-    if (rows.length) {
-      await AutoscoreDetection.insertMany(rows);
-    }
     await AutoscoreSummary.findOneAndUpdate(
       { jobId: job._id },
       {
@@ -474,7 +488,7 @@ export async function runArtifactDetection(jobId: string) {
   }
 }
 
-async function startRemoteArtifactDetection(job: any) {
+async function startRemoteArtifactDetection(job: any, detectorMode = "artifact") {
   if (!job.videoUrl) {
     throw error(
       400,
@@ -497,9 +511,10 @@ async function startRemoteArtifactDetection(job: any) {
     body: JSON.stringify({
       jobId: String(job._id),
       videoUrl: job.videoUrl,
-      stride: 90,
+      stride: detectorMode === "artifact" ? 30 : 45,
       conf: 0.25,
-      saveAnnotated: true,
+      saveAnnotated: false,
+      detectorMode,
     }),
   });
   let body = await response.json().catch(() => ({}));
@@ -515,7 +530,7 @@ async function startRemoteArtifactDetection(job: any) {
     started: true,
     jobId: String(job._id),
     message:
-      "Combined artifact and robot detection started on the Fly.io worker.",
+      `${detectorMode} detection started on the Fly.io worker.`,
   };
 }
 

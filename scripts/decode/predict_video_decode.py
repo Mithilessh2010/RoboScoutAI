@@ -99,15 +99,23 @@ def predict_video(models, source, out_dir, model_paths, conf, stride, save_annot
 
     results = []
     frame_idx = 0
-    while True:
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    sampled_total = max(1, (total_frames + max(1, stride) - 1) // max(1, stride))
+    sampled_done = 0
+    while frame_idx < total_frames or total_frames <= 0:
+        if frame_idx % max(1, stride) != 0:
+            if not cap.grab():
+                break
+            frame_idx += 1
+            continue
         ret, frame = cap.read()
         if not ret:
             break
-        if frame_idx % max(1, stride) != 0:
-            frame_idx += 1
-            continue
         detections, _results = run_models(models, frame, conf)
         results.append({"frame": frame_idx, "timestamp": frame_idx / fps, "width": width, "height": height, "detections": detections})
+        sampled_done += 1
+        if sampled_done == 1 or sampled_done % 10 == 0 or sampled_done == sampled_total:
+            print(f"Processed {sampled_done}/{sampled_total} frames", flush=True)
         if save_annotated or writer is not None:
             annotated = draw_detections(frame, detections)
             if save_annotated:
@@ -138,6 +146,7 @@ def main():
     p.add_argument('source', help='Image or video to run artifact detection on')
     p.add_argument('--model', default='services/video-processing/models/decode/best.pt')
     p.add_argument('--robot-model', default=None, help='Optional robot detector weights to run beside the artifact model')
+    p.add_argument('--detector-mode', choices=['artifact', 'robot', 'both'], default='both')
     p.add_argument('--out', default='decode-training/predictions')
     p.add_argument('--conf', type=float, default=0.25)
     p.add_argument('--stride', type=int, default=1, help='For videos, run every Nth frame')
@@ -161,11 +170,16 @@ def main():
         print('Install ultralytics to run prediction locally')
         return
 
-    models = [("artifact", YOLO(str(model_path)))]
-    model_paths = {"artifact": model_path}
-    if robot_model_path:
+    models = []
+    model_paths = {}
+    if args.detector_mode in {"artifact", "both"}:
+        models.append(("artifact", YOLO(str(model_path))))
+        model_paths["artifact"] = model_path
+    if args.detector_mode in {"robot", "both"} and robot_model_path:
         models.append(("robot", YOLO(str(robot_model_path))))
         model_paths["robot"] = robot_model_path
+    if not models:
+        raise SystemExit("No models selected for detection.")
     outp = Path(args.out)
     outp.mkdir(parents=True, exist_ok=True)
 

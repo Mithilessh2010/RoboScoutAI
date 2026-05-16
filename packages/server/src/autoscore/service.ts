@@ -402,7 +402,7 @@ export async function deleteGateEvent(gateEventId: string) {
   return AutoscoreGateEvent.findByIdAndDelete(gateEventId);
 }
 
-export async function runBackendArtifactDetection(jobId: string) {
+export async function runBackendArtifactDetection(jobId: string, detectorMode = "artifact") {
   await connectDB();
   let job = await AutoscoreJob.findById(jobId);
   if (!job) {
@@ -410,7 +410,7 @@ export async function runBackendArtifactDetection(jobId: string) {
   }
 
   if (AUTOSCORE_WORKER_URL) {
-    return startRemoteArtifactDetection(job);
+    return startRemoteArtifactDetection(job, detectorMode);
   }
 
   let sourcePath = await resolveJobVideoSource(job);
@@ -444,9 +444,11 @@ export async function runBackendArtifactDetection(jobId: string) {
         sourcePath,
         "--model",
         modelPath,
-        ...(existsSync(robotModelPath)
+        ...(detectorMode in { robot: true, both: true } && existsSync(robotModelPath)
           ? ["--robot-model", robotModelPath]
           : []),
+        "--detector-mode",
+        detectorMode,
         "--stride",
         "90",
         "--conf",
@@ -537,7 +539,7 @@ export async function runBackendArtifactDetection(jobId: string) {
   }
 }
 
-async function startRemoteArtifactDetection(job: any) {
+async function startRemoteArtifactDetection(job: any, detectorMode = "artifact") {
   if (!job.videoUrl) {
     throw new Error(
       "Fly autoscore worker requires a videoUrl. Upload the video or provide a direct video URL."
@@ -560,9 +562,10 @@ async function startRemoteArtifactDetection(job: any) {
     body: JSON.stringify({
       jobId: String(job._id),
       videoUrl: job.videoUrl,
-      stride: 90,
+      stride: detectorMode === "artifact" ? 30 : 45,
       conf: 0.25,
-      saveAnnotated: true,
+      saveAnnotated: false,
+      detectorMode,
     }),
   });
 

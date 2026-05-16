@@ -52,7 +52,8 @@ class RunRequest(BaseModel):
     videoUrl: str | None = None
     stride: int = DEFAULT_STRIDE
     conf: float = DEFAULT_CONF
-    saveAnnotated: bool = True
+    saveAnnotated: bool = False
+    detectorMode: str = "artifact"
 
 
 class CreateChunkedUploadRequest(BaseModel):
@@ -256,9 +257,11 @@ def run_job(request: RunRequest) -> None:
             str(MODEL_PATH),
             *(
                 ["--robot-model", str(ROBOT_MODEL_PATH)]
-                if ROBOT_MODEL_PATH.exists()
+                if request.detectorMode in {"robot", "both"} and ROBOT_MODEL_PATH.exists()
                 else []
             ),
+            "--detector-mode",
+            request.detectorMode,
             "--stride",
             str(max(1, request.stride)),
             "--conf",
@@ -318,9 +321,23 @@ def run_job(request: RunRequest) -> None:
         average_confidence = sum(confidences) / len(confidences) if confidences else 0
         max_confidence = max(confidences) if confidences else 0
 
-        db.autoscoredetections.delete_many({"jobId": job_object_id})
+        if request.detectorMode == "artifact":
+            db.autoscoredetections.delete_many({"jobId": job_object_id, "detectorType": "artifact"})
+        elif request.detectorMode == "robot":
+            db.autoscoredetections.delete_many({"jobId": job_object_id, "detectorType": "robot"})
+        else:
+            db.autoscoredetections.delete_many({"jobId": job_object_id})
         if rows:
             db.autoscoredetections.insert_many(rows)
+
+        all_rows = list(db.autoscoredetections.find({"jobId": job_object_id}))
+        confidences = [row["confidence"] for row in all_rows]
+        total_detections = len(all_rows)
+        artifact_green_count = sum(1 for row in all_rows if row["className"] == "artifact_green")
+        artifact_purple_count = sum(1 for row in all_rows if row["className"] == "artifact_purple")
+        robot_detection_count = sum(1 for row in all_rows if row["className"] == "robot")
+        average_confidence = sum(confidences) / len(confidences) if confidences else 0
+        max_confidence = max(confidences) if confidences else 0
 
         set_progress(90)
 

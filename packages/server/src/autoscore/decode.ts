@@ -697,14 +697,16 @@ function requiredZoneWarnings(zones) {
   );
 }
 function recentPathEvidence(frames, index, alliance) {
-  return frames
-    .slice(Math.max(0, index - 3), index + 1)
-    .some(
-      (frame) =>
-        artifactsInZone(frame, `goal_${alliance}`).length > 0 &&
-        (artifactsInZone(frame, `square_${alliance}`).length > 0 ||
-          artifactsInZone(frame, `classifier_${alliance}`).length > 0)
-    );
+  let recent = frames.slice(Math.max(0, index - 6), index + 1);
+  let goalAt = recent.findLastIndex(
+    (frame) => artifactsInZone(frame, `goal_${alliance}`).length > 0
+  );
+  let squareAt = recent.findLastIndex(
+    (frame) =>
+      artifactsInZone(frame, `square_${alliance}`).length > 0 ||
+      artifactsInZone(frame, `classifier_${alliance}`).length > 0
+  );
+  return goalAt >= 0 && squareAt >= 0 && squareAt >= goalAt;
 }
 function nearbyGate(gates, alliance, timestamp) {
   return gates.find(
