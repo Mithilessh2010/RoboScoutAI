@@ -6,8 +6,10 @@ export interface IAutoscoreGateEvent extends Document {
   timestamp: number;
   eventType:
     | "manual_gate_opened"
-    | "robot_inferred_gate_opened"
-    | "possible_gate_opened_future";
+    | "possible_gate_interaction"
+    | "gate_opened"
+    | "ramp_artifacts_released";
+  source: "manual" | "robot_model";
   releasedCount?: number | null;
   note?: string | null;
 }
@@ -26,11 +28,13 @@ const autoscoreGateEventSchema = new Schema<IAutoscoreGateEvent>(
       type: String,
       enum: [
         "manual_gate_opened",
-        "robot_inferred_gate_opened",
-        "possible_gate_opened_future",
+        "possible_gate_interaction",
+        "gate_opened",
+        "ramp_artifacts_released",
       ],
       default: "manual_gate_opened",
     },
+    source: { type: String, enum: ["manual", "robot_model"], default: "manual" },
     releasedCount: { type: Number, default: null },
     note: { type: String, default: null },
   },

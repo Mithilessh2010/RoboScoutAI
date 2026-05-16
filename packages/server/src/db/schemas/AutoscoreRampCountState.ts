@@ -11,6 +11,7 @@ export interface IAutoscoreRampCountState extends Document {
     countDelta: number;
     confidence: number;
     relatedDetectionIds: mongoose.Types.ObjectId[];
+    explainedByGateEventId?: mongoose.Types.ObjectId | null;
     manualOverride: boolean;
     warning?: string | null;
 }
@@ -27,6 +28,7 @@ const autoscoreRampCountStateSchema = new Schema<IAutoscoreRampCountState>(
         countDelta: { type: Number, required: true },
         confidence: { type: Number, default: 0 },
         relatedDetectionIds: [{ type: Schema.Types.ObjectId, ref: "AutoscoreDetection" }],
+        explainedByGateEventId: { type: Schema.Types.ObjectId, ref: "AutoscoreGateEvent", default: null },
         manualOverride: { type: Boolean, default: false },
         warning: { type: String, default: null },
     },

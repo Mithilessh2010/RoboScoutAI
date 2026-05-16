@@ -1,17 +1,29 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import {
   createAutoscoreJob,
+  clearCalibrationZones,
   createGateEvent,
+  createManualRampCorrection,
   createPenalty,
   createTimelineEvent,
   deleteTimelineEvent,
+  deleteCalibrationZone,
+  deleteGateEvent,
+  deletePenalty,
   getAutoscoreDetections,
+  getAutoscoreRobotDetections,
   getAutoscoreJob,
   getCalibrationZones,
+  getGateEvents,
+  getPenalties,
+  getRampCountStates,
   getTimeline,
   listAutoscoreJobs,
   runBackendArtifactDetection,
   updateAutoscoreJob,
+  updateCalibrationZone,
+  updateGateEvent,
+  updatePenalty,
   updateTimelineEvent,
   upsertCalibrationZone,
 } from "../packages/server/src/autoscore/service";
@@ -64,9 +76,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     let resource = parts[2];
     if (resource === "calibration-zones") {
+      if (parts[3]) {
+        if (req.method === "PUT") return res.status(200).json({ zone: await updateCalibrationZone(parts[3], req.body ?? {}) });
+        if (req.method === "DELETE") {
+          await deleteCalibrationZone(parts[3]);
+          return res.status(200).json({ deleted: true });
+        }
+        return methodNotAllowed(res, "PUT, DELETE");
+      }
       if (req.method === "GET") return res.status(200).json({ zones: await getCalibrationZones(jobId) });
       if (req.method === "POST") return res.status(201).json({ zone: await upsertCalibrationZone(jobId, req.body ?? {}) });
-      return methodNotAllowed(res, "GET, POST");
+      if (req.method === "DELETE") {
+        await clearCalibrationZones(jobId);
+        return res.status(200).json({ deleted: true });
+      }
+      return methodNotAllowed(res, "GET, POST, DELETE");
     }
 
     if (resource === "detections") {
@@ -77,7 +101,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).json(result);
     }
 
+    if (resource === "robot-detections") {
+      if (req.method !== "GET") return methodNotAllowed(res, "GET");
+      return res.status(200).json({ robotDetections: await getAutoscoreRobotDetections(jobId, Number(req.query.limit ?? 500)) });
+    }
+
     if (resource === "run-artifact-detection") {
+      if (req.method !== "POST") return methodNotAllowed(res, "POST");
+      return res.status(200).json(await runBackendArtifactDetection(jobId));
+    }
+
+    if (resource === "run-robot-detection") {
       if (req.method !== "POST") return methodNotAllowed(res, "POST");
       return res.status(200).json(await runBackendArtifactDetection(jobId));
     }
@@ -107,13 +141,46 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (resource === "penalties") {
+      if (parts[3]) {
+        if (req.method === "PUT") return res.status(200).json({ penalty: await updatePenalty(parts[3], req.body ?? {}) });
+        if (req.method === "DELETE") {
+          await deletePenalty(parts[3]);
+          return res.status(200).json({ deleted: true });
+        }
+        return methodNotAllowed(res, "PUT, DELETE");
+      }
+      if (req.method === "GET") return res.status(200).json({ penalties: await getPenalties(jobId) });
       if (req.method === "POST") return res.status(201).json({ penalty: await createPenalty(jobId, req.body ?? {}) });
-      return methodNotAllowed(res, "POST");
+      return methodNotAllowed(res, "GET, POST");
     }
 
     if (resource === "gate-events") {
+      if (parts[3]) {
+        if (req.method === "PUT") return res.status(200).json({ gateEvent: await updateGateEvent(parts[3], req.body ?? {}) });
+        if (req.method === "DELETE") {
+          await deleteGateEvent(parts[3]);
+          return res.status(200).json({ deleted: true });
+        }
+        return methodNotAllowed(res, "PUT, DELETE");
+      }
+      if (req.method === "GET") return res.status(200).json({ gateEvents: await getGateEvents(jobId) });
       if (req.method === "POST") return res.status(201).json({ gateEvent: await createGateEvent(jobId, req.body ?? {}) });
-      return methodNotAllowed(res, "POST");
+      return methodNotAllowed(res, "GET, POST");
+    }
+
+    if (resource === "ramp-counts") {
+      if (parts[3] === "manual-correction") {
+        if (req.method !== "POST") return methodNotAllowed(res, "POST");
+        return res.status(201).json({ rampCount: await createManualRampCorrection(jobId, req.body ?? {}) });
+      }
+      if (req.method !== "GET") return methodNotAllowed(res, "GET");
+      return res.status(200).json({ rampCounts: await getRampCountStates(jobId) });
+    }
+
+    if (resource === "summary") {
+      if (req.method !== "GET") return methodNotAllowed(res, "GET");
+      let result = await getAutoscoreJob(jobId);
+      return res.status(200).json({ summary: result?.summary ?? null });
     }
 
     if (resource === "logs") {

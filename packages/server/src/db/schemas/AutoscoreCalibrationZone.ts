@@ -15,11 +15,7 @@ export const autoscoreZoneTypes = [
     "base_blue",
     "launch_line_red",
     "launch_line_blue",
-    "gate_red",
-    "gate_blue",
     "obelisk_zone",
-    "gate_red",
-    "gate_blue",
     "field_boundary",
     "loading_zone_red",
     "loading_zone_blue",
@@ -33,7 +29,7 @@ export interface IAutoscoreCalibrationZone extends Document {
     jobId: mongoose.Types.ObjectId;
     zoneType: AutoscoreZoneType;
     alliance?: "red" | "blue" | null;
-    shapeType: "polygon";
+    shapeType: "rectangle" | "polygon";
     coordinates: Array<{ x: number; y: number }>;
     frameTimestamp: number;
     color?: string | null;
@@ -56,7 +52,7 @@ const autoscoreCalibrationZoneSchema = new Schema<IAutoscoreCalibrationZone>(
         jobId: { type: Schema.Types.ObjectId, ref: "AutoscoreJob", required: true, index: true },
         zoneType: { type: String, enum: autoscoreZoneTypes, required: true },
         alliance: { type: String, enum: ["red", "blue"], default: null },
-        shapeType: { type: String, enum: ["polygon"], default: "polygon", required: true },
+        shapeType: { type: String, enum: ["rectangle", "polygon"], default: "rectangle", required: true },
         coordinates: { type: [pointSchema], default: [] },
         frameTimestamp: { type: Number, default: 0 },
         color: { type: String, default: null },

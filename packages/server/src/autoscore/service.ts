@@ -12,6 +12,7 @@ import { AutoscoreCalibrationZone } from "../db/schemas/AutoscoreCalibrationZone
 import { AutoscorePenalty } from "../db/schemas/AutoscorePenalty";
 import { AutoscoreTimelineEvent } from "../db/schemas/AutoscoreTimelineEvent";
 import { AutoscoreGateEvent } from "../db/schemas/AutoscoreGateEvent";
+import { AutoscoreRampCountState } from "../db/schemas/AutoscoreRampCountState";
 
 const execFileAsync = promisify(execFile);
 
@@ -192,6 +193,16 @@ export async function getAutoscoreDetections(jobId: string, limit = 500) {
   };
 }
 
+export async function getAutoscoreRobotDetections(jobId: string, limit = 500) {
+  await connectDB();
+  let cappedLimit = Math.min(Math.max(limit, 1), 2000);
+  return (
+    await AutoscoreDetection.find({ jobId, className: "robot" })
+      .sort({ frameNumber: 1, confidence: -1 })
+      .limit(cappedLimit)
+  ).map(serializeDoc);
+}
+
 export async function getCalibrationZones(jobId: string) {
   await connectDB();
   return (
@@ -210,7 +221,7 @@ export async function upsertCalibrationZone(jobId: string, input: any) {
       jobId,
       zoneType: input.zoneType,
       alliance: input.alliance ?? null,
-      shapeType: input.shapeType ?? "polygon",
+      shapeType: input.shapeType ?? "rectangle",
       coordinates: input.coordinates ?? [],
       frameTimestamp: input.frameTimestamp ?? 0,
       color: input.color ?? null,
@@ -220,6 +231,11 @@ export async function upsertCalibrationZone(jobId: string, input: any) {
   );
   await AutoscoreJob.findByIdAndUpdate(jobId, { status: "calibrated" });
   return serializeDoc(zone);
+}
+
+export async function clearCalibrationZones(jobId: string) {
+  await connectDB();
+  await AutoscoreCalibrationZone.deleteMany({ jobId });
 }
 
 export async function updateCalibrationZone(zoneId: string, input: any) {
@@ -330,8 +346,45 @@ export async function createGateEvent(jobId: string, input: any) {
     alliance: input.alliance,
     timestamp: input.timestamp,
     eventType: "manual_gate_opened",
+    source: "manual",
     releasedCount: input.releasedCount ?? null,
     note: input.note ?? null,
+  });
+  return serializeDoc(row);
+}
+
+export async function getRampCountStates(jobId: string) {
+  await connectDB();
+  return (
+    await AutoscoreRampCountState.find({ jobId }).sort({
+      timestamp: 1,
+      alliance: 1,
+    })
+  ).map(serializeDoc);
+}
+
+export async function createManualRampCorrection(jobId: string, input: any) {
+  await connectDB();
+  let previous = await AutoscoreRampCountState.findOne({
+    jobId,
+    alliance: input.alliance,
+    timestamp: { $lte: input.timestamp },
+  }).sort({ timestamp: -1 });
+  let stableCount = Number(input.stableCount ?? previous?.stableCount ?? 0);
+  let previousStableCount = Number(previous?.stableCount ?? stableCount);
+  let row = await AutoscoreRampCountState.create({
+    jobId,
+    alliance: input.alliance,
+    timestamp: Number(input.timestamp ?? 0),
+    frameNumber: Number(input.frameNumber ?? previous?.frameNumber ?? 0),
+    rawCount: stableCount,
+    stableCount,
+    previousStableCount,
+    countDelta: stableCount - previousStableCount,
+    confidence: 1,
+    relatedDetectionIds: [],
+    manualOverride: true,
+    warning: input.note ?? "Manual ramp count correction.",
   });
   return serializeDoc(row);
 }

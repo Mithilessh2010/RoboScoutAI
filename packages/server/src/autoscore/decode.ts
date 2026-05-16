@@ -241,6 +241,24 @@ function buildRampCountEngine(jobId, frames, gateEvents) {
         } else if (!gate) {
           state.warning = `${alliance} ramp count decreased ${previousStableCount} -> ${stableCount} without manual gate event.`;
           warnings.push(state.warning);
+          events.push(
+            event(
+              jobId,
+              frame.timestamp,
+              decodePhaseAt(frame.timestamp),
+              "ramp_count_drop_unexplained",
+              alliance,
+              0,
+              Math.max(0.25, state.confidence),
+              state.warning,
+              {
+                frameNumber: frame.frameNumber,
+                relatedDetectionIds: state.relatedDetectionIds,
+              }
+            )
+          );
+        } else {
+          state.explainedByGateEventId = gate._id;
         }
       }
       states.push(state);

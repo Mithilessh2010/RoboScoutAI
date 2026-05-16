@@ -10,7 +10,9 @@ export type AutoscoreTimelineEventType =
     | "base_full"
     | "base_bonus"
     | "gate_opened"
+    | "possible_gate_interaction"
     | "ramp_artifacts_released"
+    | "ramp_count_drop_unexplained"
     | "penalty"
     | "manual_adjustment"
     | "note";
@@ -54,7 +56,9 @@ const autoscoreTimelineEventSchema = new Schema<IAutoscoreTimelineEvent>(
                 "base_full",
                 "base_bonus",
                 "gate_opened",
+                "possible_gate_interaction",
                 "ramp_artifacts_released",
+                "ramp_count_drop_unexplained",
                 "penalty",
                 "manual_adjustment",
                 "note",
