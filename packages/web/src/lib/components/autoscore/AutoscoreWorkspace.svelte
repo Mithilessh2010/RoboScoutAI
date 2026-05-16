@@ -7,43 +7,46 @@
   export let suppliedJobId = "";
   export let embedded = false;
 
-  const requiredZones = [
-    "field_boundary",
-    "goal_red", "goal_blue", "square_red", "square_blue",
-    "ramp_red", "ramp_blue", "depot_red", "depot_blue", "gate_red", "gate_blue",
+  const mainZones = [
+    { type: "basket_red", label: "Red Scoring Basket", description: "Where red artifacts first enter the scoring structure." },
+    { type: "basket_blue", label: "Blue Scoring Basket", description: "Where blue artifacts first enter the scoring structure." },
+    { type: "ramp_red", label: "Red Ramp", description: "Long rail where red classified artifacts collect." },
+    { type: "ramp_blue", label: "Blue Ramp", description: "Long rail where blue classified artifacts collect." },
+    { type: "tunnel_red", label: "Red Secret Tunnel", description: "Narrow path near the gate between basket and ramp." },
+    { type: "tunnel_blue", label: "Blue Secret Tunnel", description: "Narrow path near the gate between basket and ramp." },
+    { type: "base_red", label: "Red Base", description: "Robot return area for end-of-match base scoring." },
+    { type: "base_blue", label: "Blue Base", description: "Robot return area for end-of-match base scoring." },
+    { type: "field_boundary", label: "Field Boundary", description: "Outer playable field area; filters detections outside the field." },
   ];
-  const optionalZones = ["base_red", "base_blue", "launch_line_red", "launch_line_blue", "obelisk_zone", "loading_zone_red", "loading_zone_blue"];
-  const bilateralZoneGroups = [
-    { label: "Goal", red: "goal_red", blue: "goal_blue" },
-    { label: "Square", red: "square_red", blue: "square_blue" },
-    { label: "Classifier", red: "classifier_red", blue: "classifier_blue" },
-    { label: "Ramp", red: "ramp_red", blue: "ramp_blue" },
-    { label: "Depot", red: "depot_red", blue: "depot_blue" },
-    { label: "Gate", red: "gate_red", blue: "gate_blue" },
-    { label: "Base", red: "base_red", blue: "base_blue" },
-    { label: "Launch line", red: "launch_line_red", blue: "launch_line_blue" },
-  ];
-  const sharedZones = ["obelisk_zone", "field_boundary"];
-  const redOnlyZones = ["loading_zone_red", "ramp_index_red"];
-  const blueOnlyZones = ["loading_zone_blue", "ramp_index_blue"];
-  const redRequiredZones = ["goal_red", "square_red", "ramp_red", "depot_red", "gate_red"];
-  const blueRequiredZones = ["goal_blue", "square_blue", "ramp_blue", "depot_blue", "gate_blue"];
-  const fullCalibrationSequence = bilateralZoneGroups.flatMap((group) => [group.red, group.blue]);
-  const redCalibrationSequence = bilateralZoneGroups.map((group) => group.red);
-  const blueCalibrationSequence = bilateralZoneGroups.map((group) => group.blue);
-  const tabs = ["Setup", "Calibrate", "Detect", "Score", "Review", "JSON"];
+  const advancedZones = ["depot_red", "depot_blue", "gate_red", "gate_blue", "launch_line_red", "launch_line_blue", "ramp_index_red", "ramp_index_blue"];
+  const requiredZones = mainZones.map((zone) => zone.type);
+  const tabs = ["Match Info", "Mark Areas", "Detect", "Review Score"];
+  const workflowSteps = ["Upload Video", "Match Info", "Mark Areas", "Run Detection", "Review Score", "Export Highlights"];
   let job: any = null, summary: any = null, detections: any[] = [], events: any[] = [], zones: any[] = [];
   let gateEvents: any[] = [], penalties: any[] = [], rampCounts: any[] = [], walkthrough: any = null;
   let video: HTMLVideoElement, overlay: HTMLCanvasElement;
-  let currentTime = 0, activeTab = "Calibrate", activeZone = "field_boundary", selectedZoneId = "";
+  let currentTime = 0, activeTab = "Mark Areas", activeZone = "basket_red", selectedZoneId = "";
   let slotIndex = 1, drawMode: "draw" | "select" = "draw", dragMode = "", dragStart: any = null, draftRect: any = null;
-  let calibrationMode: "dual" | "solo_red" | "solo_blue" = "dual";
+  let advancedMode = false;
   let busy = false, message = "", errorMessage = "";
   let uploadPoller: ReturnType<typeof setInterval> | null = null;
   let detectionPoller: ReturnType<typeof setInterval> | null = null;
   let detectionWindow = { start: -Infinity, end: -Infinity };
   let loadingDetectionWindow = false;
   let autoAdvanceZone = true;
+  let playbackMeta: any = {
+    uploadedFilename: "",
+    fileSize: null,
+    mimeType: null,
+    playbackUrl: "",
+    playbackHttpStatus: null,
+    loadedMetadata: false,
+    canPlay: false,
+    exactError: "",
+  };
+  let statusHistory: Record<string, any> = {};
+  let metadataTimer: ReturnType<typeof setTimeout> | null = null;
+  let uploadDurationMs: number | null = null;
   let toggles: any = { zones: true, detections: true, labels: true, confidence: true, eventMarkers: true, rampCounts: true, depotCounts: true };
   let manualEvent = { alliance: "red", eventType: "classified", points: 3, confidence: 1, reason: "Manual review adjustment" };
   let gate = { alliance: "red", releasedCount: null, note: "Manual gate opened" };
@@ -60,24 +63,16 @@
         (!fieldBoundary || d.className === "robot" || pointInPolygon(detectionCenter(d), fieldBoundary.coordinates))
       );
   $: visibleArtifacts = visibleDetections.filter((d) => d.className !== "robot");
-  $: visibleRobots = visibleDetections.filter((d) => d.className === "robot");
   $: live = scoreAt(currentTime);
   $: latestRamp = {
     red: latestState("red", currentTime),
     blue: latestState("blue", currentTime),
   };
-  $: visibleRequiredZones = calibrationMode === "solo_red"
-    ? ["field_boundary", ...redRequiredZones]
-    : calibrationMode === "solo_blue"
-    ? ["field_boundary", ...blueRequiredZones]
-    : requiredZones;
-  $: selectableZones = calibrationMode === "solo_red"
-    ? [...redCalibrationSequence, ...sharedZones, ...redOnlyZones]
-    : calibrationMode === "solo_blue"
-    ? [...blueCalibrationSequence, ...sharedZones, ...blueOnlyZones]
-    : [...requiredZones, ...optionalZones, "ramp_index_red", "ramp_index_blue"];
-  $: zoneCoverage = visibleRequiredZones.map((zoneType) => ({ zoneType, saved: zones.some((z) => z.zoneType === zoneType) }));
+  $: selectableZones = advancedMode ? [...requiredZones, ...advancedZones] : requiredZones;
+  $: zoneCoverage = mainZones.map((zone) => ({ ...zone, saved: zones.some((z) => z.zoneType === zone.type) }));
   $: selectedZone = zones.find((z) => z._id === selectedZoneId) ?? null;
+  $: completedZoneCount = zoneCoverage.filter((zone) => zone.saved).length;
+  $: workflowIndex = !job?.videoUrl ? 0 : completedZoneCount < requiredZones.length ? 2 : job?.status === "detection_complete" || summary ? 4 : 3;
 
   async function api(path: string, init?: RequestInit) {
     let response = await fetch(path, init);
@@ -90,7 +85,7 @@
     job = detail.job; summary = detail.summary;
     job.manualLeave ??= { redTeam1: "unknown", redTeam2: "unknown", blueTeam1: "unknown", blueTeam2: "unknown" };
     job.manualBase ??= { redTeam1: "unknown", redTeam2: "unknown", blueTeam1: "unknown", blueTeam2: "unknown" };
-    job.confirmedZones ??= { goal_red: false, goal_blue: false };
+    job.confirmedZones ??= { basket_red: false, basket_blue: false };
     zones = (await api(`/api/autoscore/jobs/${jobId}/calibration-zones`)).zones;
     await loadDetectionWindow(currentTime, true);
     events = (await api(`/api/autoscore/jobs/${jobId}/timeline`)).events ?? [];
@@ -98,6 +93,8 @@
     penalties = (await api(`/api/autoscore/jobs/${jobId}/penalties`)).penalties ?? [];
     rampCounts = (await api(`/api/autoscore/jobs/${jobId}/ramp-counts`)).rampCounts ?? [];
     walkthrough = await api(`/api/autoscore/jobs/${jobId}/walkthrough`);
+    let storedUploadDuration = sessionStorage.getItem("decodeAutoscoreUploadDurationMs");
+    uploadDurationMs = storedUploadDuration ? Number(storedUploadDuration) : uploadDurationMs;
     if (!job.videoUrl && job.uploadId) startUploadPolling();
     draw();
   }
@@ -116,33 +113,109 @@
   }
   function startUploadPolling() {
     if (uploadPoller || !job?.uploadId) return;
+    beginStatus("preparing_playback");
     message = "Upload complete. Preparing playback video...";
+    let timedOut = false;
+    let timeout = setTimeout(() => {
+      timedOut = true;
+      failStatus("preparing_playback", "Playback preparation timed out after 30 seconds.");
+      errorMessage = "Playback preparation timed out after 30 seconds.";
+      if (uploadPoller) clearInterval(uploadPoller);
+      uploadPoller = null;
+    }, 30000);
     uploadPoller = setInterval(async () => {
+      if (timedOut) return;
       try {
         let response = await fetch(`https://roboscoutai-autoscore-worker.fly.dev/uploads/${job.uploadId}`);
         let upload = await response.json();
+        playbackMeta = {
+          ...playbackMeta,
+          uploadedFilename: upload.videoName ?? job.videoName ?? "",
+          fileSize: upload.sizeBytes ?? null,
+          mimeType: upload.contentType ?? null,
+          playbackUrl: upload.videoUrl ?? "",
+        };
         if (upload.status === "ready" && upload.videoUrl) {
+          playbackMeta.playbackHttpStatus = await verifyPlaybackUrl(upload.videoUrl);
           job = await api(`/api/autoscore/jobs/${jobId}`, {
             method: "PUT",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ videoUrl: upload.videoUrl, status: "video_uploaded" }),
           }).then((result) => result.job);
-          message = "Playback video ready. Mark the field zones to continue.";
+          completeStatus("preparing_playback");
+          beginStatus("playback_ready");
+          message = "Playback video ready. Waiting for browser metadata...";
+          startMetadataTimeout();
+          clearTimeout(timeout);
           clearInterval(uploadPoller!); uploadPoller = null;
         } else if (upload.status === "failed") {
+          clearTimeout(timeout);
+          failStatus("preparing_playback", upload.errorMessage ?? "Video processing failed.");
           errorMessage = upload.errorMessage ?? "Video processing failed.";
           clearInterval(uploadPoller!); uploadPoller = null;
         }
       } catch (error) {
-        errorMessage = error instanceof Error ? error.message : String(error);
+        let detail = error instanceof Error ? error.message : String(error);
+        playbackMeta.exactError = detail;
+        errorMessage = detail;
       }
     }, 1800);
+  }
+  function beginStatus(status: string) {
+    statusHistory = { ...statusHistory, [status]: { startedAt: Date.now(), completedAt: null, durationMs: null, errorMessage: null } };
+    console.info(`[autoscore] ${status} started`);
+  }
+  function completeStatus(status: string) {
+    let startedAt = statusHistory[status]?.startedAt ?? Date.now();
+    statusHistory = { ...statusHistory, [status]: { ...statusHistory[status], completedAt: Date.now(), durationMs: Date.now() - startedAt } };
+    console.info(`[autoscore] ${status} completed in ${statusHistory[status].durationMs}ms`);
+  }
+  function failStatus(status: string, detail: string) {
+    let startedAt = statusHistory[status]?.startedAt ?? Date.now();
+    statusHistory = { ...statusHistory, [status]: { ...statusHistory[status], completedAt: Date.now(), durationMs: Date.now() - startedAt, errorMessage: detail } };
+    playbackMeta.exactError = detail;
+    console.error(`[autoscore] ${status} failed`, detail);
+  }
+  async function verifyPlaybackUrl(url: string) {
+    try {
+      let response = await fetch(url, { headers: { Range: "bytes=0-0" } });
+      return response.status;
+    } catch {
+      return null;
+    }
+  }
+  function startMetadataTimeout() {
+    if (metadataTimer) clearTimeout(metadataTimer);
+    metadataTimer = setTimeout(() => {
+      if (playbackMeta.loadedMetadata) return;
+      failStatus("playback_ready", "Browser video metadata did not load within 30 seconds.");
+      errorMessage = "Browser video metadata did not load within 30 seconds.";
+    }, 30000);
+  }
+  function handleLoadedMetadata() {
+    playbackMeta = { ...playbackMeta, loadedMetadata: true };
+    if (metadataTimer) clearTimeout(metadataTimer);
+    completeStatus("playback_ready");
+    beginStatus("calibration_ready");
+    completeStatus("calibration_ready");
+    message = "Video ready. Pause on a clear frame and mark the field areas.";
+    draw();
+  }
+  function handleCanPlay() {
+    playbackMeta = { ...playbackMeta, canPlay: true };
+  }
+  function handleVideoError(event: Event) {
+    let target = event.currentTarget as HTMLVideoElement;
+    let detail = target?.error?.message || "Browser could not play this video.";
+    playbackMeta = { ...playbackMeta, exactError: detail };
+    failStatus("playback_ready", detail);
+    errorMessage = detail;
   }
   async function saveJob() {
     job = (await api(`/api/autoscore/jobs/${jobId}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(job) })).job;
     message = "Setup saved.";
   }
-  async function confirmGoal(zoneType: "goal_red" | "goal_blue") {
+  async function confirmGoal(zoneType: "basket_red" | "basket_blue") {
     if (!zones.some((zone) => zone.zoneType === zoneType)) {
       errorMessage = `Draw and save ${zoneType} before confirming it.`;
       return;
@@ -156,36 +229,32 @@
     selectedZoneId = "";
     draftRect = null;
   }
-  function setCalibrationMode(mode: "dual" | "solo_red" | "solo_blue") {
-    calibrationMode = mode;
-    let allowed = new Set(selectableZones);
-    if (!allowed.has(activeZone)) {
-      activeZone = mode === "solo_red" ? "goal_red" : mode === "solo_blue" ? "goal_blue" : "goal_red";
-    }
-    drawMode = "draw";
-    selectedZoneId = "";
-    draftRect = null;
-    draw();
-  }
   function nextCalibrationZone(zoneType: string) {
-    let sequence = calibrationMode === "solo_red"
-      ? redCalibrationSequence
-      : calibrationMode === "solo_blue"
-      ? blueCalibrationSequence
-      : fullCalibrationSequence;
+    let sequence = requiredZones;
     let index = sequence.indexOf(zoneType);
     if (index < 0) return sequence[0] ?? zoneType;
     return sequence[(index + 1) % sequence.length] ?? zoneType;
   }
   async function run(url: string, success: string) {
     busy = true; errorMessage = "";
+    let status = url.includes("detection") ? "detecting" : url.includes("autoscore") ? "scoring" : "running";
+    beginStatus(status);
     try {
       await api(url, { method: "POST" });
       message = success;
       await load();
       if (url.includes("detection")) startDetectionPolling();
+      if (url.includes("autoscore")) {
+        completeStatus("scoring");
+        beginStatus("walkthrough_ready");
+        completeStatus("walkthrough_ready");
+      }
     }
-    catch (error) { errorMessage = error instanceof Error ? error.message : String(error); }
+    catch (error) {
+      let detail = error instanceof Error ? error.message : String(error);
+      failStatus(status, detail);
+      errorMessage = detail;
+    }
     finally { busy = false; }
   }
   function startDetectionPolling() {
@@ -196,6 +265,7 @@
         if (job?.status !== "detecting" && job?.status !== "running") {
           clearInterval(detectionPoller!);
           detectionPoller = null;
+          if (job?.status === "detection_complete") completeStatus("detecting");
           message = job?.status === "detection_complete"
             ? "Detection complete. Review overlays or run full DECODE autoscore."
             : message;
@@ -215,7 +285,7 @@
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ zoneType, alliance, shapeType: "rectangle", coordinates, index, frameTimestamp: currentTime }),
     });
-    if (zoneType === "goal_red" || zoneType === "goal_blue") {
+    if (zoneType === "basket_red" || zoneType === "basket_blue") {
       job.confirmedZones[zoneType] = false;
       await saveJob();
     }
@@ -230,7 +300,7 @@
       method: "PUT", headers: { "content-type": "application/json" },
       body: JSON.stringify({ coordinates: selectedZone.coordinates, shapeType: "rectangle" }),
     });
-    if (selectedZone.zoneType === "goal_red" || selectedZone.zoneType === "goal_blue") {
+    if (selectedZone.zoneType === "basket_red" || selectedZone.zoneType === "basket_blue") {
       job.confirmedZones[selectedZone.zoneType] = false;
       await saveJob();
     }
@@ -239,7 +309,7 @@
   async function deleteSelectedZone() {
     if (!selectedZone) return;
     await api(`/api/autoscore/jobs/${jobId}/calibration-zones/${selectedZone._id}`, { method: "DELETE" });
-    if (selectedZone.zoneType === "goal_red" || selectedZone.zoneType === "goal_blue") {
+    if (selectedZone.zoneType === "basket_red" || selectedZone.zoneType === "basket_blue") {
       job.confirmedZones[selectedZone.zoneType] = false;
       await saveJob();
     }
@@ -323,19 +393,20 @@
       y: ((d.y ?? 0) + (d.height ?? 0) / 2) / (d.frameHeight || 1),
     };
   }
-  function countInZone(zoneType: string) { let zone = zones.find((z) => z.zoneType === zoneType); return zone ? visibleArtifacts.filter((d) => pointInPolygon(detectionCenter(d), zone.coordinates)).length : null; }
   function rectPoints(rect: any) { let x1 = Math.min(rect.x1, rect.x2), x2 = Math.max(rect.x1, rect.x2), y1 = Math.min(rect.y1, rect.y2), y2 = Math.max(rect.y1, rect.y2); return [{ x: x1, y: y1 }, { x: x2, y: y1 }, { x: x2, y: y2 }, { x: x1, y: y2 }]; }
   function bounds(points: any[]) { let xs = points.map((p) => p.x), ys = points.map((p) => p.y); return { x1: Math.min(...xs), x2: Math.max(...xs), y1: Math.min(...ys), y2: Math.max(...ys) }; }
   function nearestHandle(point: any, points: any[]) { let box = bounds(points), handles: any = { lt: [box.x1, box.y1], rt: [box.x2, box.y1], rb: [box.x2, box.y2], lb: [box.x1, box.y2] }; return Object.entries(handles).find(([, [x, y]]: any) => Math.hypot(point.x - x, point.y - y) < 0.025)?.[0] ?? null; }
   function pointInPolygon(point: any, polygon: any[]) { let inside = false; for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) { let { x: xi, y: yi } = polygon[i], { x: xj, y: yj } = polygon[j]; if ((yi > point.y) !== (yj > point.y) && point.x < ((xj - xi) * (point.y - yi)) / (yj - yi + 0.000001) + xi) inside = !inside; } return inside; }
   function clamp(n: number) { return Math.max(0, Math.min(1, n)); }
-  function colorFor(zoneType: string) { if (zoneType.includes("gate")) return "#ffd166"; if (zoneType.includes("red")) return "#ff6b7a"; if (zoneType.includes("blue")) return "#62b6ff"; if (zoneType.includes("depot")) return "#b86bff"; return "#cbd5e1"; }
+  function colorFor(zoneType: string) { if (zoneType.includes("tunnel") || zoneType.includes("gate")) return "#ffd166"; if (zoneType.includes("red")) return "#ff6b7a"; if (zoneType.includes("blue")) return "#62b6ff"; if (zoneType.includes("depot")) return "#b86bff"; return "#f8fafc"; }
+  function labelFor(zoneType: string) { return mainZones.find((zone) => zone.type === zoneType)?.label ?? zoneType; }
+  function statusDuration(status: string) { return statusHistory[status]?.durationMs == null ? "-" : `${(statusHistory[status].durationMs / 1000).toFixed(1)}s`; }
   function draw() {
     if (!overlay || !video) return;
     let ctx = overlay.getContext("2d")!, w = overlay.width = overlay.clientWidth, h = overlay.height = overlay.clientHeight;
     ctx.clearRect(0, 0, w, h); ctx.lineWidth = 2; ctx.font = "12px Inter";
-    if (toggles.zones) for (let zone of zones) drawZone(ctx, zone.coordinates, colorFor(zone.zoneType), zone.zoneType + (zone.index ? ` ${zone.index}` : ""), zone._id === selectedZoneId, w, h);
-    if (draftRect) drawZone(ctx, rectPoints(draftRect), "#ffffff", activeZone, true, w, h);
+    if (toggles.zones) for (let zone of zones) drawZone(ctx, zone.coordinates, colorFor(zone.zoneType), labelFor(zone.zoneType) + (zone.index ? ` ${zone.index}` : ""), zone._id === selectedZoneId, w, h);
+    if (draftRect) drawZone(ctx, rectPoints(draftRect), "#ffffff", labelFor(activeZone), true, w, h);
     if (toggles.detections) for (let detection of visibleDetections) drawDetection(ctx, detection, w, h);
   }
   function drawZone(ctx: any, points: any[], color: string, label: string, selected: boolean, w: number, h: number) {
@@ -371,6 +442,7 @@
   onDestroy(() => {
     if (uploadPoller) clearInterval(uploadPoller);
     if (detectionPoller) clearInterval(detectionPoller);
+    if (metadataTimer) clearTimeout(metadataTimer);
   });
 </script>
 
@@ -378,18 +450,18 @@
 <WidthProvider width="1540px"><Card>
 {#if job}
   <header class="hero">
-    <div><p>DECODE Autoscore</p><h1>{job.matchName || job.videoName}</h1><small>{job.eventName || "Match review"} · {job.status}</small></div>
-    <div class="steps">{#each tabs.slice(0, 5) as tab}<button class:active={activeTab === tab} on:click={() => activeTab = tab}>{tab}</button>{/each}</div>
+    <div><p>DECODE Autoscore</p><h1>{job.matchName || job.videoName}</h1><small>Prototype video-based scoring estimate. Not official FTC scoring.</small></div>
+    <div class="workflow">{#each workflowSteps as step, index}<span class:done={index < workflowIndex} class:active={index === workflowIndex}>{index + 1}. {step}</span>{/each}</div>
   </header>
   <section class="workspace">
     <div class="stage">
       <div class="video-wrap">
         {#if job.videoUrl}
-          <video bind:this={video} src={job.videoUrl} controls on:timeupdate={() => { currentTime = video.currentTime; loadDetectionWindow(currentTime); draw(); }} on:loadedmetadata={draw}><track kind="captions" /></video>
+          <video bind:this={video} src={job.videoUrl} controls on:timeupdate={() => { currentTime = video.currentTime; loadDetectionWindow(currentTime); draw(); }} on:loadedmetadata={handleLoadedMetadata} on:canplay={handleCanPlay} on:error={handleVideoError}><track kind="captions" /></video>
         {:else}
           <div class="video-pending">Upload complete. Preparing playback video...</div>
         {/if}
-        <canvas class:editing={activeTab === "Calibrate"} bind:this={overlay} on:mousedown={onPointerDown} on:mousemove={onPointerMove} on:mouseup={onPointerUp} on:mouseleave={onPointerUp} />
+        <canvas class:editing={activeTab === "Mark Areas"} bind:this={overlay} on:mousedown={onPointerDown} on:mousemove={onPointerMove} on:mouseup={onPointerUp} on:mouseleave={onPointerUp} />
       </div>
       <div class="transport">
         <strong>{fmt(currentTime)}</strong><span>{phase(currentTime)}</span>
@@ -406,85 +478,89 @@
       <article class="alliance red"><small>Red Alliance</small><h2>{live.red}</h2><p>{job.redTeam1 || "?"} / {job.redTeam2 || "?"}</p><span>AUTO {summary?.redAutoScore ?? 0} · TELEOP {summary?.redTeleopScore ?? 0}</span></article>
       <article class="alliance blue"><small>Blue Alliance</small><h2>{live.blue}</h2><p>{job.blueTeam1 || "?"} / {job.blueTeam2 || "?"}</p><span>AUTO {summary?.blueAutoScore ?? 0} · TELEOP {summary?.blueTeleopScore ?? 0}</span></article>
       <article class="telemetry"><h3>Ramp Inventory</h3><p>Red {latestRamp.red?.stableCount ?? "-"} <small>prev {latestRamp.red?.previousStableCount ?? "-"}</small></p><p>Blue {latestRamp.blue?.stableCount ?? "-"} <small>prev {latestRamp.blue?.previousStableCount ?? "-"}</small></p></article>
-      <article class="telemetry"><h3>Current Frame</h3><p>{visibleArtifacts.length} artifacts · {visibleRobots.length} robots</p><p>Depot R {countInZone("depot_red") ?? "-"} · B {countInZone("depot_blue") ?? "-"}</p></article>
+      <article class="telemetry"><h3>Current Frame</h3><p>{visibleArtifacts.length} artifacts detected</p><p>{fmt(currentTime)} · {phase(currentTime)}</p></article>
+      <article class="telemetry status-card"><h3>Processing Status</h3><p>Upload {uploadDurationMs == null ? "-" : `${(uploadDurationMs / 1000).toFixed(1)}s`}</p><p>Playback prep {statusDuration("preparing_playback")}</p><p>Metadata load {statusDuration("playback_ready")}</p><p>Detection {statusDuration("detecting")}</p><p>Scoring {statusDuration("scoring")}</p></article>
       {#if summary?.warnings?.length}<article class="warnings"><h3>Review Warnings</h3>{#each summary.warnings.slice(0,4) as warning}<p>{warning}</p>{/each}</article>{/if}
     </aside>
   </section>
   <section class="panel">
-    {#if activeTab === "Setup"}
-      <h2>Match Setup</h2><div class="form-grid">
+    <nav class="tabs">{#each tabs as tab}<button class:active={activeTab === tab} on:click={() => activeTab = tab}>{tab}</button>{/each}<label class="advanced"><input type="checkbox" bind:checked={advancedMode} />Advanced Mode</label></nav>
+    {#if activeTab === "Match Info"}
+      <h2>Match Info</h2><div class="form-grid">
         <input bind:value={job.matchName} placeholder="Match name" /><input bind:value={job.eventName} placeholder="Event name" />
         <input bind:value={job.redTeam1} placeholder="Red team 1" /><input bind:value={job.redTeam2} placeholder="Red team 2" />
         <input bind:value={job.blueTeam1} placeholder="Blue team 1" /><input bind:value={job.blueTeam2} placeholder="Blue team 2" />
         <select bind:value={job.motif}><option>unknown</option><option>GPP</option><option>PGP</option><option>PPG</option></select>
       </div>
-      <h3>Manual LEAVE / BASE</h3><div class="manual-grid">{#each ["redTeam1","redTeam2","blueTeam1","blueTeam2"] as slot}<label>{slot}<select bind:value={job.manualLeave[slot]}><option>unknown</option><option>yes</option><option>no</option></select><select bind:value={job.manualBase[slot]}><option>unknown</option><option>none</option><option>partial</option><option>full</option></select></label>{/each}</div>
+      <details><summary>Manual LEAVE / BASE scoring</summary><div class="manual-grid">{#each ["redTeam1","redTeam2","blueTeam1","blueTeam2"] as slot}<label>{slot}<select bind:value={job.manualLeave[slot]}><option>unknown</option><option>yes</option><option>no</option></select><select bind:value={job.manualBase[slot]}><option>unknown</option><option>none</option><option>partial</option><option>full</option></select></label>{/each}</div></details>
       <button on:click={saveJob}>Save setup</button>
-    {:else if activeTab === "Calibrate"}
+    {:else if activeTab === "Mark Areas"}
       <div class="split"><div>
-        <h2>Field Calibration</h2><p class="subtle">Choose a zone, then drag directly on the video. Switch to Select to move or resize a saved zone.</p>
-        <div class="mode-row">
-          <strong>Calibration mode</strong>
-          <button class:secondary={calibrationMode !== "dual"} on:click={() => setCalibrationMode("dual")}>Dual</button>
-          <button class:secondary={calibrationMode !== "solo_red"} on:click={() => setCalibrationMode("solo_red")}>Solo red</button>
-          <button class:secondary={calibrationMode !== "solo_blue"} on:click={() => setCalibrationMode("solo_blue")}>Solo blue</button>
-          <label class="inline-check"><input type="checkbox" bind:checked={autoAdvanceZone} />Auto next after save</label>
-        </div>
-        <div class="alliance-zone-grid">
-          {#if calibrationMode !== "solo_blue"}<section class="zone-lane red-lane"><h3>Red side</h3>
-            {#each bilateralZoneGroups as group}<button class:zone-saved={zones.some((zone) => zone.zoneType === group.red)} class:zone-active={activeZone === group.red} on:click={() => chooseZone(group.red)}>{group.label}</button>{/each}
-          </section>{/if}
-          {#if calibrationMode !== "solo_red"}<section class="zone-lane blue-lane"><h3>Blue side</h3>
-            {#each bilateralZoneGroups as group}<button class:zone-saved={zones.some((zone) => zone.zoneType === group.blue)} class:zone-active={activeZone === group.blue} on:click={() => chooseZone(group.blue)}>{group.label}</button>{/each}
-          </section>{/if}
+        <h2>Mark Field Areas</h2><p class="subtle">Pause on a clear full-field frame, choose an area, then drag directly on the video. Use Select to move or resize a saved area.</p>
+        <div class="zone-card-grid">
+          {#each mainZones as zone}
+            <button class:zone-saved={zones.some((item) => item.zoneType === zone.type)} class:zone-active={activeZone === zone.type} on:click={() => chooseZone(zone.type)}>
+              <b>{zone.label}</b><small>{zone.description}</small>
+            </button>
+          {/each}
         </div>
         <div class="goal-confirm">
-          {#if calibrationMode !== "solo_blue"}<button class:confirmed={job.confirmedZones.goal_red} on:click={() => confirmGoal("goal_red")}>{job.confirmedZones.goal_red ? "Red goal confirmed" : "Confirm red goal"}</button>{/if}
-          {#if calibrationMode !== "solo_red"}<button class:confirmed={job.confirmedZones.goal_blue} on:click={() => confirmGoal("goal_blue")}>{job.confirmedZones.goal_blue ? "Blue goal confirmed" : "Confirm blue goal"}</button>{/if}
+          <button class:confirmed={job.confirmedZones.basket_red} on:click={() => confirmGoal("basket_red")}>{job.confirmedZones.basket_red ? "Red basket confirmed" : "Confirm red basket"}</button>
+          <button class:confirmed={job.confirmedZones.basket_blue} on:click={() => confirmGoal("basket_blue")}>{job.confirmedZones.basket_blue ? "Blue basket confirmed" : "Confirm blue basket"}</button>
         </div>
-        <div class="toolbar-row"><select bind:value={activeZone}>{#each selectableZones as zone}<option>{zone}</option>{/each}</select>
+        <div class="toolbar-row"><select bind:value={activeZone}>{#each selectableZones as zone}<option value={zone}>{labelFor(zone)}</option>{/each}</select>
         {#if activeZone.startsWith("ramp_index_")}<input type="number" min="1" max="9" bind:value={slotIndex} />{/if}
         <button class:secondary={drawMode !== "draw"} on:click={() => drawMode="draw"}>Draw</button><button class:secondary={drawMode !== "select"} on:click={() => drawMode="select"}>Select</button>
         <button on:click={saveZone}>Save zone{autoAdvanceZone ? " & next" : ""}</button><button class="secondary" on:click={updateSelectedZone}>Save edits</button><button class="secondary" on:click={deleteSelectedZone}>Delete selected</button><button class="danger" on:click={clearAllZones}>Clear all</button></div>
-      </div><div class="coverage">{#each zoneCoverage as item}<span class:saved={item.saved}>{item.zoneType}</span>{/each}</div></div>
+      </div><div class="coverage"><h3>Required Field Areas</h3>{#each zoneCoverage as item}<span class:saved={item.saved}>{item.saved ? "✓" : "○"} {item.label}</span>{/each}</div></div>
     {:else if activeTab === "Detect"}
-      <h2>Models & Detection</h2><div class="actions"><button disabled={busy || !job.videoUrl} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-frame-artifact-detection`, "Full-frame artifact detection started.")}>Run artifact detection on every frame</button><button class="secondary" disabled={busy || !job.videoUrl} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-artifact-detection`, "Quick artifact scan started.")}>Quick scan</button><button class="secondary" disabled={busy || !job.videoUrl} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-robot-detection`, "Robot detection started.")}>Run robot detection</button></div>
-      <p class="subtle">Full-frame mode runs YOLO on every frame for detailed scoring input. It is much slower than the quick scan because it is doing much more real work.</p>
+      <h2>Run Detection</h2><div class="actions"><button disabled={busy || !job.videoUrl} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-frame-artifact-detection`, "Artifact detection started.")}>Run Artifact Detection</button>{#if advancedMode}<button class="secondary" disabled={busy || !job.videoUrl} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-artifact-detection`, "Quick artifact scan started.")}>Quick scan</button>{/if}</div>
+      <p class="subtle">The artifact model checks the video frame by frame, then the scorer uses baskets, tunnels, and ramp count changes to decide what counted.</p>
       <dl><dt>Artifacts</dt><dd>{summary?.artifactGreenCount ?? 0} green · {summary?.artifactPurpleCount ?? 0} purple</dd><dt>Robots</dt><dd>{summary?.robotDetectionCount ?? 0}</dd><dt>Average confidence</dt><dd>{Math.round((summary?.averageConfidence ?? 0)*100)}%</dd></dl>
-    {:else if activeTab === "Score"}
-      <h2>Scoring Controls</h2><div class="actions"><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-decode-autoscore`, "Full DECODE autoscore calculated.")}>Run full DECODE autoscore</button><button class="secondary" on:click={recalc}>Recalculate after edits</button></div>
-      <div class="three"><div><h3>Manual Gate</h3><select bind:value={gate.alliance}><option>red</option><option>blue</option></select><input bind:value={gate.note} /><button on:click={addGate}>Add at current time</button></div>
-      <div><h3>Penalty</h3><select bind:value={penalty.committingAlliance}><option>red</option><option>blue</option></select><select bind:value={penalty.foulType}><option>minor</option><option>major</option></select><input type="number" bind:value={penalty.count} /><button on:click={addPenalty}>Add penalty</button></div>
-      <div><h3>Ramp Correction</h3><select bind:value={rampCorrection.alliance}><option>red</option><option>blue</option></select><input type="number" bind:value={rampCorrection.stableCount} /><button on:click={addRampCorrection}>Save correction</button></div></div>
-    {:else if activeTab === "Review"}
+    {:else if activeTab === "Review Score"}
+      <h2>Calculate & Review Score</h2><div class="actions"><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-decode-autoscore`, "DECODE autoscore calculated.")}>Calculate Score</button><button class="secondary" on:click={recalc}>Recalculate after edits</button></div>
       <div class="review"><div><h2>Timeline</h2>{#each events as event}<div class="event-row"><button on:click={() => seek(event.timestamp)}>{fmt(event.timestamp)} {event.alliance} {event.eventType} {event.points ? `+${event.points}` : ""}<small>{Math.round(event.confidence*100)}% {event.reason}</small></button><button class="secondary" on:click={() => editEvent(event)}>Edit</button><button class="secondary" on:click={() => deleteEvent(event._id)}>Delete</button></div>{/each}</div>
       <div><h2>Scoring Walkthrough</h2>{#if walkthrough?.aiSummary}<article class="ai-summary"><h3>AI review summary</h3><p>{walkthrough.aiSummary}</p></article>{/if}{#each walkthrough?.items ?? [] as item}<article class="walkthrough-item"><b>{fmt(item.timestamp)} {item.alliance} {item.eventType} {item.points ? `+${item.points}` : ""}</b><p>{item.explanation}</p><small>{Math.round(item.confidence*100)}% confidence{item.reviewNeeded ? " · review suggested" : ""}</small></article>{/each}</div></div>
       <div class="review-actions"><button on:click={() => downloadText("decode-walkthrough.md", walkthrough?.markdown ?? "")}>Download walkthrough</button><button class="secondary" on:click={() => downloadText("decode-score.json", JSON.stringify({ summary, events, rampCounts, warnings: summary?.warnings ?? [] }, null, 2), "application/json")}>Download scoring JSON</button><button class="secondary" disabled={busy} on:click={downloadHighlights}>Download highlight frames + clips</button></div>
-      <div><h2>Add Manual Event</h2><select bind:value={manualEvent.alliance}><option>red</option><option>blue</option></select><select bind:value={manualEvent.eventType}><option>classified</option><option>overflow</option><option>depot</option><option>manual_adjustment</option></select><input type="number" bind:value={manualEvent.points} /><input bind:value={manualEvent.reason} /><button on:click={addManualEvent}>Add at current time</button></div>
-    {:else}
-      <h2>Results JSON</h2><pre>{JSON.stringify({ summary, gateEvents, penalties, rampCounts: rampCounts.slice(-20), events }, null, 2)}</pre>
+      <details><summary>Manual Scoring & Corrections</summary><div class="three"><div><h3>Manual Gate</h3><select bind:value={gate.alliance}><option>red</option><option>blue</option></select><input bind:value={gate.note} /><button on:click={addGate}>Add at current time</button></div>
+      <div><h3>Penalty</h3><select bind:value={penalty.committingAlliance}><option>red</option><option>blue</option></select><select bind:value={penalty.foulType}><option>minor</option><option>major</option></select><input type="number" bind:value={penalty.count} /><button on:click={addPenalty}>Add penalty</button></div>
+      <div><h3>Ramp Correction</h3><select bind:value={rampCorrection.alliance}><option>red</option><option>blue</option></select><input type="number" bind:value={rampCorrection.stableCount} /><button on:click={addRampCorrection}>Save correction</button></div></div>
+      <div><h3>Add Manual Event</h3><select bind:value={manualEvent.alliance}><option>red</option><option>blue</option></select><select bind:value={manualEvent.eventType}><option>classified</option><option>overflow</option><option>manual_adjustment</option></select><input type="number" bind:value={manualEvent.points} /><input bind:value={manualEvent.reason} /><button on:click={addManualEvent}>Add at current time</button></div></details>
+      {#if advancedMode}<details><summary>Raw JSON</summary><pre>{JSON.stringify({ summary, gateEvents, penalties, rampCounts: rampCounts.slice(-20), events }, null, 2)}</pre></details>{/if}
     {/if}
   </section>
 {:else}<p>Loading autoscore session...</p>{/if}
 {#if message}<p class="notice">{message}</p>{/if}{#if errorMessage}<p class="error">{errorMessage}</p>{/if}
+{#if errorMessage && !playbackMeta.loadedMetadata}
+  <section class="playback-debug">
+    <h3>Playback diagnostics</h3>
+    <p>File: {playbackMeta.uploadedFilename || job?.videoName || "-"}</p>
+    <p>Size: {playbackMeta.fileSize ?? "-"}</p>
+    <p>MIME: {playbackMeta.mimeType ?? "-"}</p>
+    <p>Playback URL: {playbackMeta.playbackUrl || job?.videoUrl || "-"}</p>
+    <p>HTTP status: {playbackMeta.playbackHttpStatus ?? "-"}</p>
+    <p>loadedmetadata fired: {playbackMeta.loadedMetadata ? "yes" : "no"}</p>
+    <p>Error: {playbackMeta.exactError || errorMessage}</p>
+  </section>
+{/if}
 </Card></WidthProvider>
 
 <style>
   h1,h2,h3,p{margin:0}.hero{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:16px}.hero p{color:var(--secondary-text-color)}
-  .steps,.transport,.toolbar-row,.actions{display:flex;gap:8px;flex-wrap:wrap}.steps button{background:var(--form-bg-color);color:var(--text-color)}.steps .active{background:var(--theme-color);color:var(--theme-text-color)}
+  .workflow,.transport,.toolbar-row,.actions{display:flex;gap:8px;flex-wrap:wrap}.workflow span{padding:8px 10px;border:1px solid var(--sep-color);border-radius:999px;color:var(--secondary-text-color)}.workflow .done{border-color:#38d98a;color:#38d98a}.workflow .active{border-color:var(--theme-color);color:var(--text-color)}
   .workspace{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:16px}.video-wrap{position:relative;aspect-ratio:16/9;background:#050505;border:1px solid var(--sep-color);border-radius:8px;overflow:hidden}
   .video-pending{position:absolute;inset:0;display:grid;place-items:center;padding:24px;color:var(--secondary-text-color);text-align:center}
   video,canvas{position:absolute;inset:0;width:100%;height:100%}canvas{pointer-events:none}.editing{pointer-events:auto}.transport{align-items:center;padding:10px 0;color:var(--secondary-text-color)}label{display:flex;gap:5px;align-items:center}
   .timeline-strip{display:flex;gap:6px;overflow:auto;padding-bottom:4px}.timeline-strip button{white-space:nowrap;background:var(--form-bg-color);color:var(--text-color)}.timeline-strip .event-active{outline:2px solid var(--theme-color)}
-  .score-rail{display:grid;gap:10px}.score-rail article,.panel{border:1px solid var(--sep-color);border-radius:8px;padding:14px;background:color-mix(in srgb,var(--form-bg-color) 82%, transparent)}
+  .score-rail{display:grid;gap:10px}.score-rail article,.panel,.playback-debug{border:1px solid var(--sep-color);border-radius:8px;padding:14px;background:color-mix(in srgb,var(--form-bg-color) 82%, transparent)}
   .alliance h2{font-size:40px;line-height:1}.alliance.red h2{color:#ff6b7a}.alliance.blue h2{color:#62b6ff}.alliance span,.telemetry small,.subtle{color:var(--secondary-text-color)}
   .warnings p{font-size:12px;margin-top:6px}.panel{margin-top:16px;display:grid;gap:12px}.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.manual-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.manual-grid label{display:grid;grid-template-columns:1fr 90px 90px}
   input,select,button{padding:9px;border:1px solid var(--sep-color);border-radius:8px;background:var(--form-bg-color);color:var(--text-color)}button{background:var(--theme-color);color:var(--theme-text-color);cursor:pointer}.secondary{background:var(--form-bg-color);color:var(--text-color)}.danger{background:#6e2631}
-  .split{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}.coverage{display:flex;gap:6px;flex-wrap:wrap}.coverage span{padding:6px 8px;border:1px solid var(--sep-color);border-radius:999px;color:var(--secondary-text-color)}.coverage .saved{border-color:#38d98a;color:#38d98a}
-  .alliance-zone-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.zone-lane{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:10px;border:1px solid var(--sep-color);border-radius:8px}.zone-lane h3{grid-column:1/-1}.red-lane h3{color:#ff6b7a}.blue-lane h3{color:#62b6ff}.zone-lane button{background:var(--form-bg-color);color:var(--text-color)}.zone-lane .zone-saved{outline:1px solid #38d98a}.zone-lane .zone-active{background:var(--theme-color);color:var(--theme-text-color)}.goal-confirm{display:flex;gap:8px;margin-top:10px}.goal-confirm .confirmed{background:#1d6b4e}
-  .mode-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.inline-check{display:flex;gap:6px;align-items:center;margin-left:auto;color:var(--secondary-text-color)}
+  .tabs{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.tabs button{background:var(--form-bg-color);color:var(--text-color)}.tabs .active{background:var(--theme-color);color:var(--theme-text-color)}.advanced{margin-left:auto}
+  .split{display:grid;grid-template-columns:1.35fr .65fr;gap:16px}.coverage{display:grid;gap:8px;align-content:start}.coverage span{padding:8px;border:1px solid var(--sep-color);border-radius:8px;color:var(--secondary-text-color)}.coverage .saved{border-color:#38d98a;color:#38d98a}
+  .zone-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.zone-card-grid button{display:grid;gap:4px;text-align:left;background:var(--form-bg-color);color:var(--text-color)}.zone-card-grid small{color:var(--secondary-text-color)}.zone-card-grid .zone-saved{outline:1px solid #38d98a}.zone-card-grid .zone-active{background:var(--theme-color);color:var(--theme-text-color)}.zone-card-grid .zone-active small{color:inherit}.goal-confirm{display:flex;gap:8px;margin-top:10px}.goal-confirm .confirmed{background:#1d6b4e}
   .walkthrough-item{padding:10px 0;border-top:1px solid var(--sep-color)}.walkthrough-item p{margin-top:4px}.walkthrough-item small{color:var(--secondary-text-color)}.review-actions{display:flex;gap:8px}
   .ai-summary{padding:10px;border:1px solid var(--sep-color);border-radius:8px;margin-bottom:10px}.ai-summary p{margin-top:4px;color:var(--secondary-text-color)}
-  dl{display:grid;grid-template-columns:180px 1fr;gap:8px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.three>div{display:grid;gap:8px}.review{display:grid;grid-template-columns:minmax(0,1.4fr) 320px;gap:16px}.event-row{display:grid;grid-template-columns:1fr auto auto;gap:6px;margin-top:6px}.event-row button:first-child{text-align:left}.event-row small{display:block}.notice,.error{padding:10px;margin-top:12px;border-radius:8px}.notice{background:var(--green-stat-bg-color)}.error{background:var(--red-stat-bg-color)}pre{max-height:480px;overflow:auto;white-space:pre-wrap;font-size:12px}
-  @media(max-width:1000px){.workspace,.split,.three,.review,.form-grid,.manual-grid,.alliance-zone-grid{grid-template-columns:1fr}}
+  dl{display:grid;grid-template-columns:180px 1fr;gap:8px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.three>div{display:grid;gap:8px}.review{display:grid;grid-template-columns:minmax(0,1.4fr) 320px;gap:16px}.event-row{display:grid;grid-template-columns:1fr auto auto;gap:6px;margin-top:6px}.event-row button:first-child{text-align:left}.event-row small{display:block}.notice,.error{padding:10px;margin-top:12px;border-radius:8px}.notice{background:var(--green-stat-bg-color)}.error{background:var(--red-stat-bg-color)}.playback-debug{margin-top:12px}.playback-debug p{margin-top:4px;word-break:break-all}summary{cursor:pointer;margin-bottom:10px}pre{max-height:480px;overflow:auto;white-space:pre-wrap;font-size:12px}
+  @media(max-width:1000px){.workspace,.split,.three,.review,.form-grid,.manual-grid,.zone-card-grid{grid-template-columns:1fr}}
 </style>

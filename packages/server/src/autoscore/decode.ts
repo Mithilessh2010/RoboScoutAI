@@ -18,16 +18,14 @@ import { AutoscoreTrackedArtifact } from "../db/schemas/AutoscoreTrackedArtifact
 
 const REQUIRED_ZONE_TYPES = [
   "field_boundary",
-  "goal_red",
-  "goal_blue",
-  "square_red",
-  "square_blue",
+  "basket_red",
+  "basket_blue",
+  "tunnel_red",
+  "tunnel_blue",
   "ramp_red",
   "ramp_blue",
-  "depot_red",
-  "depot_blue",
-  "gate_red",
-  "gate_blue",
+  "base_red",
+  "base_blue",
 ];
 
 export async function runFullDecodeAutoscore(jobId: string) {
@@ -248,7 +246,7 @@ function buildRampCountEngine(jobId, frames, gateEvents) {
                 alliance,
                 classifiedPoints(frame.timestamp),
                 Math.max(0.7, state.confidence),
-                `${alliance} ramp stable count increased ${previousStableCount} -> ${stableCount} after goal/square activity.`,
+              `${alliance} ramp stable count increased ${previousStableCount} -> ${stableCount} after scoring basket/secret tunnel activity.`,
                 {
                   artifactColor: rampDetections[n]?.artifactColor ?? null,
                   frameNumber: frame.frameNumber,
@@ -337,7 +335,7 @@ function buildOverflowEvents(jobId, frames, states) {
     let recentSquareCounts = [];
     for (let index = 0; index < frames.length; index += 1) {
       let frame = frames[index];
-      let square = artifactsInZone(frame, `square_${alliance}`);
+      let square = artifactsInPathZone(frame, alliance);
       recentSquareCounts.push(square.length);
       recentSquareCounts = recentSquareCounts.slice(-5);
       let smoothedSquareCount = median(recentSquareCounts);
@@ -392,7 +390,7 @@ function buildOverflowEvents(jobId, frames, states) {
             alliance,
             overflowPoints(frame.timestamp),
             Math.max(0.45, detection.confidence - 0.12),
-            `${alliance} square stable count increased ${acceptedSquareCount - squareDelta} -> ${acceptedSquareCount}, but ramp stable count did not increase.`,
+            `${alliance} secret tunnel stable count increased ${acceptedSquareCount - squareDelta} -> ${acceptedSquareCount}, but ramp stable count did not increase.`,
             {
               artifactColor: detection.artifactColor,
               frameNumber: frame.frameNumber,
@@ -788,8 +786,11 @@ function requiredZoneWarnings(zones, job = null) {
   let warnings = REQUIRED_ZONE_TYPES.filter((zone) => !present.has(zone)).map(
     (zone) => `${zone} is not calibrated.`
   );
-  if (!job?.confirmedZones?.goal_red) warnings.push("goal_red is not confirmed.");
-  if (!job?.confirmedZones?.goal_blue) warnings.push("goal_blue is not confirmed.");
+  if (!job?.confirmedZones?.basket_red) warnings.push("Red Scoring Basket is not confirmed.");
+  if (!job?.confirmedZones?.basket_blue) warnings.push("Blue Scoring Basket is not confirmed.");
+  if (!present.has("depot_red") || !present.has("depot_blue")) {
+    warnings.push("Depot scoring not included unless enabled in Advanced Mode.");
+  }
   return warnings;
 }
 function recentPathEvidence(frames, index, alliance, lookbackSeconds = 4) {
@@ -797,13 +798,9 @@ function recentPathEvidence(frames, index, alliance, lookbackSeconds = 4) {
   let recent = frames
     .slice(0, index + 1)
     .filter((frame) => frame.timestamp >= timestamp - lookbackSeconds);
-  let goalAt = recent.findLastIndex(
-    (frame) => artifactsInZone(frame, `goal_${alliance}`).length > 0
-  );
+  let goalAt = recent.findLastIndex((frame) => artifactsInBasketZone(frame, alliance).length > 0);
   let squareAt = recent.findLastIndex(
-    (frame) =>
-      artifactsInZone(frame, `square_${alliance}`).length > 0 ||
-      artifactsInZone(frame, `classifier_${alliance}`).length > 0
+    (frame) => artifactsInPathZone(frame, alliance).length > 0
   );
   return goalAt >= 0 && squareAt >= 0 && squareAt >= goalAt;
 }
@@ -829,6 +826,19 @@ function artifactInZone(detection) {
 
 function artifactsInZone(frame, zoneType) {
   return (frame.zones[zoneType] ?? []).filter(artifactInZone);
+}
+function artifactsInBasketZone(frame, alliance) {
+  return [
+    ...artifactsInZone(frame, `basket_${alliance}`),
+    ...artifactsInZone(frame, `goal_${alliance}`),
+  ];
+}
+function artifactsInPathZone(frame, alliance) {
+  return [
+    ...artifactsInZone(frame, `tunnel_${alliance}`),
+    ...artifactsInZone(frame, `square_${alliance}`),
+    ...artifactsInZone(frame, `classifier_${alliance}`),
+  ];
 }
 
 function robotsInZone(frame, zoneType) {

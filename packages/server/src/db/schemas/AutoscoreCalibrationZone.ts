@@ -1,6 +1,10 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export const autoscoreZoneTypes = [
+    "basket_red",
+    "basket_blue",
+    "tunnel_red",
+    "tunnel_blue",
     "goal_red",
     "goal_blue",
     "classifier_red",

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { goto } from "$app/navigation";
   import AutoscoreWorkspace from "$lib/components/autoscore/AutoscoreWorkspace.svelte";
   import Card from "$lib/components/Card.svelte";
   import Head from "$lib/components/Head.svelte";
@@ -11,6 +10,7 @@
   let currentJobId = "";
   let busy = false, errorMessage = "", message = "", uploadProgress = 0;
   let videoFile: File | null = null;
+  let uploadStartedAt = 0, uploadDurationMs: number | null = null;
   let form = { videoName: "", videoUrl: "", redTeam1: "", redTeam2: "", blueTeam1: "", blueTeam2: "", motif: "unknown" };
 
   async function beginSession() {
@@ -19,7 +19,10 @@
       let videoUrl = form.videoUrl.trim();
       let uploadId = "";
       if (videoFile) {
+        uploadStartedAt = performance.now();
         let uploaded = videoFile.size > 50 * 1024 * 1024 ? await uploadChunked(videoFile) : await uploadDirect(videoFile);
+        uploadDurationMs = performance.now() - uploadStartedAt;
+        sessionStorage.setItem("decodeAutoscoreUploadDurationMs", String(uploadDurationMs));
         uploadId = uploaded.uploadId;
       }
       if (!videoUrl && !uploadId) throw new Error("Upload a video or provide a video URL.");
@@ -31,7 +34,7 @@
       if (!response.ok) throw new Error(data.error ?? "Could not start autoscore session.");
       currentJobId = data.job._id;
       localStorage.setItem("decodeAutoscoreSessionId", currentJobId);
-      await goto(`/autoscore/${currentJobId}`);
+      message = "Upload complete. Preparing playback video...";
     } catch (error) { errorMessage = error instanceof Error ? error.message : String(error); }
     finally { busy = false; uploadProgress = 0; }
   }
@@ -92,16 +95,17 @@
         <p>Upload one DECODE video, then mark the field zones directly on the video before running artifact detection.</p>
       </div>
       <form on:submit|preventDefault={beginSession}>
-        <input bind:value={form.videoName} placeholder="Video/session name" />
+        <input bind:value={form.videoName} placeholder="Optional session name" />
         <input bind:value={form.videoUrl} placeholder="Optional direct video URL" />
         <input type="file" accept="video/*,.mov,.mp4,.webm,.mkv" on:change={(event) => videoFile = event.currentTarget.files?.[0] ?? null} />
         <select bind:value={form.motif}><option value="unknown">Motif unknown</option><option>GPP</option><option>PGP</option><option>PPG</option></select>
         <input bind:value={form.redTeam1} placeholder="Red team 1 optional" /><input bind:value={form.redTeam2} placeholder="Red team 2 optional" />
         <input bind:value={form.blueTeam1} placeholder="Blue team 1 optional" /><input bind:value={form.blueTeam2} placeholder="Blue team 2 optional" />
-        <button disabled={busy}>Open Autoscore Workspace</button>
+        <button disabled={busy}>Upload Match Video</button>
       </form>
     </section>
     {#if uploadProgress > 0}<p class="notice">Uploading {uploadProgress.toFixed(0)}%</p>{/if}
+    {#if uploadDurationMs != null}<p class="notice">Upload finished in {(uploadDurationMs / 1000).toFixed(1)}s.</p>{/if}
     {#if message}<p class="notice">{message}</p>{/if}{#if errorMessage}<p class="error">{errorMessage}</p>{/if}
   </Card></WidthProvider>
 {/if}

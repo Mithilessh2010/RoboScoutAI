@@ -119,8 +119,8 @@ const autoscoreJobSchema = new Schema<IAutoscoreJob>(
     confirmedZones: {
       type: Schema.Types.Mixed,
       default: () => ({
-        goal_red: false,
-        goal_blue: false,
+        basket_red: false,
+        basket_blue: false,
       }),
     },
     errorMessage: { type: String, default: null },
