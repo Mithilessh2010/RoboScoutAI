@@ -118,10 +118,12 @@ export async function getDecodeWalkthrough(jobId: string) {
   let events = await AutoscoreTimelineEvent.find({ jobId }).sort({ timestamp: 1 }).lean();
   let summary = await AutoscoreSummary.findOne({ jobId }).lean();
   let warnings = summary?.warnings ?? [];
+  let aiSummary = await summarizeWalkthroughWithOpenRouter(events, summary, warnings);
   return {
     markdown: renderWalkthroughMarkdown(events, summary, warnings),
     items: events.map(walkthroughItem),
     warnings,
+    aiSummary,
   };
 }
 
@@ -853,6 +855,51 @@ function renderWalkthroughMarkdown(events, summary, warnings) {
     lines.push("## Review warnings", ...warnings.map((warning) => `- ${warning}`), "");
   }
   return lines.join("\n");
+}
+async function summarizeWalkthroughWithOpenRouter(events, summary, warnings) {
+  let key = process.env.OPENROUTER_API_KEY;
+  if (!key || !events.length) return null;
+  try {
+    let response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
+        temperature: 0.2,
+        max_tokens: 450,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You explain FTC DECODE autoscore results from structured JSON only. Do not invent detections or change scores. Be concise, name uncertain moments, and mention what the reviewer should inspect.",
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              summary,
+              warnings,
+              events: events.map((row) => ({
+                timestamp: row.timestamp,
+                alliance: row.alliance,
+                eventType: row.eventType,
+                points: row.points,
+                confidence: row.confidence,
+                reason: row.reason,
+              })),
+            }),
+          },
+        ],
+      }),
+    });
+    if (!response.ok) return null;
+    let body = await response.json().catch(() => ({}));
+    return body?.choices?.[0]?.message?.content ?? null;
+  } catch {
+    return null;
+  }
 }
 function formatTimestamp(timestamp) {
   let minutes = Math.floor(timestamp / 60);

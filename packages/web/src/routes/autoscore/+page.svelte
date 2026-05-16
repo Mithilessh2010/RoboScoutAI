@@ -17,15 +17,15 @@
     busy = true; errorMessage = ""; message = "";
     try {
       let videoUrl = form.videoUrl.trim();
+      let uploadId = "";
       if (videoFile) {
         let uploaded = videoFile.size > 50 * 1024 * 1024 ? await uploadChunked(videoFile) : await uploadDirect(videoFile);
-        let ready = await waitForUpload(uploaded.uploadId);
-        videoUrl = ready.videoUrl;
+        uploadId = uploaded.uploadId;
       }
-      if (!videoUrl) throw new Error("Upload a video or provide a video URL.");
+      if (!videoUrl && !uploadId) throw new Error("Upload a video or provide a video URL.");
       let response = await fetch("/api/autoscore/jobs", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...form, matchName: form.videoName || videoFile?.name || "DECODE session", videoName: form.videoName || videoFile?.name || "DECODE session", videoUrl }),
+        body: JSON.stringify({ ...form, matchName: form.videoName || videoFile?.name || "DECODE session", videoName: form.videoName || videoFile?.name || "DECODE session", videoUrl, uploadId }),
       });
       let data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Could not start autoscore session.");
@@ -74,26 +74,6 @@
       request.onerror = () => reject(new Error("Upload failed."));
       let payload = new FormData(); payload.append("file", file); request.send(payload);
     });
-  }
-  async function waitForUpload(uploadId: string) {
-    let worker = uploadUrl.replace(/\/upload-video$/, "");
-    let startedAt = Date.now();
-    while (true) {
-      let response = await fetch(`${worker}/uploads/${uploadId}`);
-      let data = await response.json().catch(() => ({}));
-      let status = String(data.status ?? "").toLowerCase();
-
-      if (data.videoUrl || ["ready", "complete", "completed", "done", "success"].includes(status)) return data;
-      if (["failed", "error"].includes(status)) throw new Error(data.errorMessage ?? "Video processing failed.");
-      if (Date.now() - startedAt > 1000 * 60 * 10) {
-        throw new Error("Upload finished but video processing is taking too long. Please try again.");
-      }
-
-      message = uploadProgress >= 100
-        ? "Upload complete. Preparing playback video..."
-        : "Preparing playback video...";
-      await new Promise((resolve) => setTimeout(resolve, 1800));
-    }
   }
   onMount(() => currentJobId = localStorage.getItem("decodeAutoscoreSessionId") ?? "");
 </script>

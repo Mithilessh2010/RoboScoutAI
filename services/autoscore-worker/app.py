@@ -707,9 +707,35 @@ def export_highlights(
         cv2.rectangle(frame, (16, 16), (520, 66), (12, 12, 12), -1)
         cv2.putText(frame, label, (28, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.85, (255, 255, 255), 2)
         cv2.imwrite(str(export_dir / f"{index + 1:03d}_{event['timestamp']:.1f}_{event['eventType']}.jpg"), frame)
+        if int(event.get("points", 0)) > 0:
+            clip_start = max(0.0, float(event["timestamp"]) - 3.0)
+            clip_path = export_dir / f"{index + 1:03d}_{event['timestamp']:.1f}_{event['eventType']}.mp4"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-ss",
+                    str(clip_start),
+                    "-i",
+                    str(source_path),
+                    "-t",
+                    "6",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-c:a",
+                    "aac",
+                    str(clip_path),
+                ],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
     cap.release()
     zip_path = export_dir.with_suffix(".zip")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        for image_path in sorted(export_dir.glob("*.jpg")):
-            archive.write(image_path, image_path.name)
+        for asset_path in sorted(export_dir.glob("*")):
+            if asset_path.suffix in {".jpg", ".mp4"}:
+                archive.write(asset_path, asset_path.name)
     return FileResponse(zip_path, media_type="application/zip", filename=f"decode-highlights-{request.jobId}.zip")

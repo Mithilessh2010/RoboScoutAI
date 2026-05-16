@@ -20,6 +20,7 @@ export interface IAutoscoreJob extends Document {
   videoName: string;
   videoPath?: string;
   videoUrl?: string;
+  uploadId?: string;
   status: AutoscoreJobStatus;
   phase: "artifact_detection" | "decode_autoscore";
   redTeam1?: string;
@@ -54,6 +55,7 @@ const autoscoreJobSchema = new Schema<IAutoscoreJob>(
     videoName: { type: String, required: true },
     videoPath: { type: String, default: null },
     videoUrl: { type: String, default: null },
+    uploadId: { type: String, default: null },
     status: {
       type: String,
       enum: [

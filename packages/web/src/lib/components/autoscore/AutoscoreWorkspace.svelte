@@ -2,7 +2,7 @@
   import Card from "$lib/components/Card.svelte";
   import Head from "$lib/components/Head.svelte";
   import WidthProvider from "$lib/components/WidthProvider.svelte";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { page } from "$app/stores";
   export let suppliedJobId = "";
   export let embedded = false;
@@ -38,6 +38,7 @@
   let slotIndex = 1, drawMode: "draw" | "select" = "draw", dragMode = "", dragStart: any = null, draftRect: any = null;
   let calibrationMode: "dual" | "solo_red" | "solo_blue" = "dual";
   let busy = false, message = "", errorMessage = "";
+  let uploadPoller: ReturnType<typeof setInterval> | null = null;
   let autoAdvanceZone = true;
   let toggles: any = { zones: true, detections: true, labels: true, confidence: true, eventMarkers: true, rampCounts: true, depotCounts: true };
   let manualEvent = { alliance: "red", eventType: "classified", points: 3, confidence: 1, reason: "Manual review adjustment" };
@@ -87,7 +88,32 @@
     penalties = (await api(`/api/autoscore/jobs/${jobId}/penalties`)).penalties ?? [];
     rampCounts = (await api(`/api/autoscore/jobs/${jobId}/ramp-counts`)).rampCounts ?? [];
     walkthrough = await api(`/api/autoscore/jobs/${jobId}/walkthrough`);
+    if (!job.videoUrl && job.uploadId) startUploadPolling();
     draw();
+  }
+  function startUploadPolling() {
+    if (uploadPoller || !job?.uploadId) return;
+    message = "Upload complete. Preparing playback video...";
+    uploadPoller = setInterval(async () => {
+      try {
+        let response = await fetch(`https://roboscoutai-autoscore-worker.fly.dev/uploads/${job.uploadId}`);
+        let upload = await response.json();
+        if (upload.status === "ready" && upload.videoUrl) {
+          job = await api(`/api/autoscore/jobs/${jobId}`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ videoUrl: upload.videoUrl, status: "video_uploaded" }),
+          }).then((result) => result.job);
+          message = "Playback video ready. Mark the field zones to continue.";
+          clearInterval(uploadPoller!); uploadPoller = null;
+        } else if (upload.status === "failed") {
+          errorMessage = upload.errorMessage ?? "Video processing failed.";
+          clearInterval(uploadPoller!); uploadPoller = null;
+        }
+      } catch (error) {
+        errorMessage = error instanceof Error ? error.message : String(error);
+      }
+    }, 1800);
   }
   async function saveJob() {
     job = (await api(`/api/autoscore/jobs/${jobId}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(job) })).job;
@@ -297,6 +323,7 @@
     finally { busy = false; }
   }
   onMount(() => load().catch((error) => errorMessage = error instanceof Error ? error.message : String(error)));
+  onDestroy(() => uploadPoller && clearInterval(uploadPoller));
 </script>
 
 {#if !embedded}<Head title="DECODE Autoscore Cockpit" />{/if}
@@ -309,12 +336,16 @@
   <section class="workspace">
     <div class="stage">
       <div class="video-wrap">
-        <video bind:this={video} src={job.videoUrl} controls on:timeupdate={() => { currentTime = video.currentTime; draw(); }} on:loadedmetadata={draw}><track kind="captions" /></video>
+        {#if job.videoUrl}
+          <video bind:this={video} src={job.videoUrl} controls on:timeupdate={() => { currentTime = video.currentTime; draw(); }} on:loadedmetadata={draw}><track kind="captions" /></video>
+        {:else}
+          <div class="video-pending">Upload complete. Preparing playback video...</div>
+        {/if}
         <canvas class:editing={activeTab === "Calibrate"} bind:this={overlay} on:mousedown={onPointerDown} on:mousemove={onPointerMove} on:mouseup={onPointerUp} on:mouseleave={onPointerUp} />
       </div>
       <div class="transport">
         <strong>{fmt(currentTime)}</strong><span>{phase(currentTime)}</span>
-        <button class="secondary" on:click={() => video.paused ? video.play() : video.pause()}>{video?.paused ? "Play" : "Pause"}</button>
+        <button class="secondary" disabled={!video} on:click={() => video.paused ? video.play() : video.pause()}>{video?.paused ? "Play" : "Pause"}</button>
         <button class="secondary" on:click={() => seek(Math.max(0, currentTime - 5))}>-5s</button>
         <button class="secondary" on:click={() => seek(Math.min(video?.duration || 150, currentTime + 5))}>+5s</button>
         {#each Object.keys(toggles) as key}<label><input type="checkbox" bind:checked={toggles[key]} on:change={draw} />{key}</label>{/each}
@@ -369,7 +400,7 @@
         <button on:click={saveZone}>Save zone{autoAdvanceZone ? " & next" : ""}</button><button class="secondary" on:click={updateSelectedZone}>Save edits</button><button class="secondary" on:click={deleteSelectedZone}>Delete selected</button><button class="danger" on:click={clearAllZones}>Clear all</button></div>
       </div><div class="coverage">{#each zoneCoverage as item}<span class:saved={item.saved}>{item.zoneType}</span>{/each}</div></div>
     {:else if activeTab === "Detect"}
-      <h2>Models & Detection</h2><div class="actions"><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-artifact-detection`, "Quick artifact detection started.")}>Quick artifact scan</button><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-frame-artifact-detection`, "Full-frame artifact detection started.")}>Full-frame artifact detection</button><button class="secondary" disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-robot-detection`, "Robot detection started.")}>Run robot detection</button></div>
+      <h2>Models & Detection</h2><div class="actions"><button disabled={busy || !job.videoUrl} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-frame-artifact-detection`, "Full-frame artifact detection started.")}>Run artifact detection on every frame</button><button class="secondary" disabled={busy || !job.videoUrl} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-artifact-detection`, "Quick artifact scan started.")}>Quick scan</button><button class="secondary" disabled={busy || !job.videoUrl} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-robot-detection`, "Robot detection started.")}>Run robot detection</button></div>
       <p class="subtle">Full-frame mode runs YOLO on every frame for detailed scoring input. It is much slower than the quick scan because it is doing much more real work.</p>
       <dl><dt>Artifacts</dt><dd>{summary?.artifactGreenCount ?? 0} green · {summary?.artifactPurpleCount ?? 0} purple</dd><dt>Robots</dt><dd>{summary?.robotDetectionCount ?? 0}</dd><dt>Average confidence</dt><dd>{Math.round((summary?.averageConfidence ?? 0)*100)}%</dd></dl>
     {:else if activeTab === "Score"}
@@ -379,8 +410,8 @@
       <div><h3>Ramp Correction</h3><select bind:value={rampCorrection.alliance}><option>red</option><option>blue</option></select><input type="number" bind:value={rampCorrection.stableCount} /><button on:click={addRampCorrection}>Save correction</button></div></div>
     {:else if activeTab === "Review"}
       <div class="review"><div><h2>Timeline</h2>{#each events as event}<div class="event-row"><button on:click={() => seek(event.timestamp)}>{fmt(event.timestamp)} {event.alliance} {event.eventType} {event.points ? `+${event.points}` : ""}<small>{Math.round(event.confidence*100)}% {event.reason}</small></button><button class="secondary" on:click={() => editEvent(event)}>Edit</button><button class="secondary" on:click={() => deleteEvent(event._id)}>Delete</button></div>{/each}</div>
-      <div><h2>Scoring Walkthrough</h2>{#each walkthrough?.items ?? [] as item}<article class="walkthrough-item"><b>{fmt(item.timestamp)} {item.alliance} {item.eventType} {item.points ? `+${item.points}` : ""}</b><p>{item.explanation}</p><small>{Math.round(item.confidence*100)}% confidence{item.reviewNeeded ? " · review suggested" : ""}</small></article>{/each}</div></div>
-      <div class="review-actions"><button on:click={() => downloadText("decode-walkthrough.md", walkthrough?.markdown ?? "")}>Download walkthrough</button><button class="secondary" on:click={() => downloadText("decode-score.json", JSON.stringify({ summary, events, rampCounts, warnings: summary?.warnings ?? [] }, null, 2), "application/json")}>Download scoring JSON</button><button class="secondary" disabled={busy} on:click={downloadHighlights}>Download annotated event frames</button></div>
+      <div><h2>Scoring Walkthrough</h2>{#if walkthrough?.aiSummary}<article class="ai-summary"><h3>AI review summary</h3><p>{walkthrough.aiSummary}</p></article>{/if}{#each walkthrough?.items ?? [] as item}<article class="walkthrough-item"><b>{fmt(item.timestamp)} {item.alliance} {item.eventType} {item.points ? `+${item.points}` : ""}</b><p>{item.explanation}</p><small>{Math.round(item.confidence*100)}% confidence{item.reviewNeeded ? " · review suggested" : ""}</small></article>{/each}</div></div>
+      <div class="review-actions"><button on:click={() => downloadText("decode-walkthrough.md", walkthrough?.markdown ?? "")}>Download walkthrough</button><button class="secondary" on:click={() => downloadText("decode-score.json", JSON.stringify({ summary, events, rampCounts, warnings: summary?.warnings ?? [] }, null, 2), "application/json")}>Download scoring JSON</button><button class="secondary" disabled={busy} on:click={downloadHighlights}>Download highlight frames + clips</button></div>
       <div><h2>Add Manual Event</h2><select bind:value={manualEvent.alliance}><option>red</option><option>blue</option></select><select bind:value={manualEvent.eventType}><option>classified</option><option>overflow</option><option>depot</option><option>manual_adjustment</option></select><input type="number" bind:value={manualEvent.points} /><input bind:value={manualEvent.reason} /><button on:click={addManualEvent}>Add at current time</button></div>
     {:else}
       <h2>Results JSON</h2><pre>{JSON.stringify({ summary, gateEvents, penalties, rampCounts: rampCounts.slice(-20), events }, null, 2)}</pre>
@@ -394,6 +425,7 @@
   h1,h2,h3,p{margin:0}.hero{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:16px}.hero p{color:var(--secondary-text-color)}
   .steps,.transport,.toolbar-row,.actions{display:flex;gap:8px;flex-wrap:wrap}.steps button{background:var(--form-bg-color);color:var(--text-color)}.steps .active{background:var(--theme-color);color:var(--theme-text-color)}
   .workspace{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:16px}.video-wrap{position:relative;aspect-ratio:16/9;background:#050505;border:1px solid var(--sep-color);border-radius:8px;overflow:hidden}
+  .video-pending{position:absolute;inset:0;display:grid;place-items:center;padding:24px;color:var(--secondary-text-color);text-align:center}
   video,canvas{position:absolute;inset:0;width:100%;height:100%}canvas{pointer-events:none}.editing{pointer-events:auto}.transport{align-items:center;padding:10px 0;color:var(--secondary-text-color)}label{display:flex;gap:5px;align-items:center}
   .timeline-strip{display:flex;gap:6px;overflow:auto;padding-bottom:4px}.timeline-strip button{white-space:nowrap;background:var(--form-bg-color);color:var(--text-color)}.timeline-strip .event-active{outline:2px solid var(--theme-color)}
   .score-rail{display:grid;gap:10px}.score-rail article,.panel{border:1px solid var(--sep-color);border-radius:8px;padding:14px;background:color-mix(in srgb,var(--form-bg-color) 82%, transparent)}
@@ -404,6 +436,7 @@
   .alliance-zone-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.zone-lane{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:10px;border:1px solid var(--sep-color);border-radius:8px}.zone-lane h3{grid-column:1/-1}.red-lane h3{color:#ff6b7a}.blue-lane h3{color:#62b6ff}.zone-lane button{background:var(--form-bg-color);color:var(--text-color)}.zone-lane .zone-saved{outline:1px solid #38d98a}.zone-lane .zone-active{background:var(--theme-color);color:var(--theme-text-color)}.goal-confirm{display:flex;gap:8px;margin-top:10px}.goal-confirm .confirmed{background:#1d6b4e}
   .mode-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.inline-check{display:flex;gap:6px;align-items:center;margin-left:auto;color:var(--secondary-text-color)}
   .walkthrough-item{padding:10px 0;border-top:1px solid var(--sep-color)}.walkthrough-item p{margin-top:4px}.walkthrough-item small{color:var(--secondary-text-color)}.review-actions{display:flex;gap:8px}
+  .ai-summary{padding:10px;border:1px solid var(--sep-color);border-radius:8px;margin-bottom:10px}.ai-summary p{margin-top:4px;color:var(--secondary-text-color)}
   dl{display:grid;grid-template-columns:180px 1fr;gap:8px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.three>div{display:grid;gap:8px}.review{display:grid;grid-template-columns:minmax(0,1.4fr) 320px;gap:16px}.event-row{display:grid;grid-template-columns:1fr auto auto;gap:6px;margin-top:6px}.event-row button:first-child{text-align:left}.event-row small{display:block}.notice,.error{padding:10px;margin-top:12px;border-radius:8px}.notice{background:var(--green-stat-bg-color)}.error{background:var(--red-stat-bg-color)}pre{max-height:480px;overflow:auto;white-space:pre-wrap;font-size:12px}
   @media(max-width:1000px){.workspace,.split,.three,.review,.form-grid,.manual-grid,.alliance-zone-grid{grid-template-columns:1fr}}
 </style>

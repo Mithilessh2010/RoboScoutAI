@@ -109,6 +109,7 @@ export async function createAutoscoreJob(input: {
   videoName?: string;
   videoPath?: string;
   videoUrl?: string;
+  uploadId?: string;
   redTeam1?: string;
   redTeam2?: string;
   blueTeam1?: string;
@@ -118,8 +119,9 @@ export async function createAutoscoreJob(input: {
   await connectDB();
   let videoPath = input.videoPath?.trim() || "";
   let videoUrl = input.videoUrl?.trim() || "";
-  if (!videoPath && !videoUrl) {
-    throw new Error("Provide videoPath or videoUrl.");
+  let uploadId = input.uploadId?.trim() || "";
+  if (!videoPath && !videoUrl && !uploadId) {
+    throw new Error("Provide videoPath, videoUrl, or uploadId.");
   }
   let videoName =
     input.videoName?.trim() || path.basename(videoPath || videoUrl);
@@ -129,6 +131,7 @@ export async function createAutoscoreJob(input: {
     videoName,
     videoPath: videoPath || null,
     videoUrl: videoUrl || null,
+    uploadId: uploadId || null,
     redTeam1: input.redTeam1?.trim() || "",
     redTeam2: input.redTeam2?.trim() || "",
     blueTeam1: input.blueTeam1?.trim() || "",
@@ -148,6 +151,7 @@ export async function updateAutoscoreJob(jobId: string, input: any) {
     "videoName",
     "videoPath",
     "videoUrl",
+    "uploadId",
     "status",
     "phase",
     "redTeam1",
