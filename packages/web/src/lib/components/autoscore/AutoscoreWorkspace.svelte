@@ -49,7 +49,13 @@
 
   $: jobId = suppliedJobId || $page.params.jobId;
   $: nearestDetectionTime = detections.length ? detections.reduce((best, detection) => Math.abs(detection.timestamp - currentTime) < Math.abs(best - currentTime) ? detection.timestamp : best, detections[0].timestamp) : null;
-  $: visibleDetections = nearestDetectionTime == null ? [] : detections.filter((d) => d.timestamp === nearestDetectionTime);
+  $: fieldBoundary = zones.find((zone) => zone.zoneType === "field_boundary") ?? null;
+  $: visibleDetections = nearestDetectionTime == null
+    ? []
+    : detections.filter((d) =>
+        d.timestamp === nearestDetectionTime &&
+        (!fieldBoundary || d.className === "robot" || pointInPolygon(detectionCenter(d), fieldBoundary.coordinates))
+      );
   $: visibleArtifacts = visibleDetections.filter((d) => d.className !== "robot");
   $: visibleRobots = visibleDetections.filter((d) => d.className === "robot");
   $: live = scoreAt(currentTime);

@@ -44,6 +44,7 @@ export async function runFullDecodeAutoscore(jobId: string) {
     confidence: -1,
   });
   let zones = await AutoscoreCalibrationZone.find({ jobId }).lean();
+  detections = detectionsInsideFieldBoundary(detections, zones);
   let penalties = await AutoscorePenalty.find({ jobId }).lean();
   let gateEvents = await AutoscoreGateEvent.find({ jobId })
     .sort({ timestamp: 1 })
@@ -98,6 +99,7 @@ export async function recalculateDecodeScore(jobId: string) {
   await connectDB();
   let detections = await AutoscoreDetection.find({ jobId }).lean();
   let zones = await AutoscoreCalibrationZone.find({ jobId }).lean();
+  detections = detectionsInsideFieldBoundary(detections, zones);
   let penalties = await AutoscorePenalty.find({ jobId }).lean();
   await AutoscoreTimelineEvent.deleteMany({ jobId, eventType: "penalty" });
   let regeneratedPenaltyEvents = buildPenaltyEvents(penalties);
@@ -157,6 +159,15 @@ function buildFrameSnapshots(detections, zones) {
     }
   }
   return [...byFrame.values()].sort((a, b) => a.timestamp - b.timestamp);
+}
+function detectionsInsideFieldBoundary(detections, zones) {
+  let field = zones.find((zone) => zone.zoneType === "field_boundary");
+  if (!field) return detections;
+  return detections.filter((detection) => {
+    if (detection.className === "robot") return true;
+    let center = normalizedCenter(detection);
+    return center ? pointInPolygon(center, field.coordinates) : true;
+  });
 }
 
 function buildRampCountEngine(jobId, frames, gateEvents) {
@@ -711,6 +722,8 @@ function requiredZoneWarnings(zones, job = null) {
   );
   if (!job?.confirmedZones?.goal_red) warnings.push("goal_red is not confirmed.");
   if (!job?.confirmedZones?.goal_blue) warnings.push("goal_blue is not confirmed.");
+  if (!present.has("field_boundary"))
+    warnings.push("field_boundary is not calibrated; broadcast graphics may appear as false artifact detections.");
   return warnings;
 }
 function recentPathEvidence(frames, index, alliance) {
