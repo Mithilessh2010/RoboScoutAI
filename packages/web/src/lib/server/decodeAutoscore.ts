@@ -29,5 +29,6 @@ export {
 
 export {
   recalculateDecodeScore,
+  getDecodeWalkthrough,
   runFullDecodeAutoscore,
 } from "../../../../server/src/autoscore/decode";

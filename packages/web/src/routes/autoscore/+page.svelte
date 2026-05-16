@@ -1,331 +1,107 @@
 <script lang="ts">
+  import AutoscoreWorkspace from "$lib/components/autoscore/AutoscoreWorkspace.svelte";
   import Card from "$lib/components/Card.svelte";
   import Head from "$lib/components/Head.svelte";
   import WidthProvider from "$lib/components/WidthProvider.svelte";
   import { onMount } from "svelte";
 
-  let jobs: any[] = [];
-  let busy = false;
-  let errorMessage = "";
-  let message = "";
-  let uploadProgress = 0;
-  let videoFile: File | null = null;
+  const steps = ["Upload Video", "Mark Zones", "Run Detection", "Review Score", "Export Highlights"];
   const uploadUrl = "https://roboscoutai-autoscore-worker.fly.dev/upload-video";
-  let form = {
-    matchName: "",
-    eventName: "",
-    videoName: "",
-    videoUrl: "",
-    redTeam1: "",
-    redTeam2: "",
-    blueTeam1: "",
-    blueTeam2: "",
-    motif: "unknown",
-  };
+  let currentJobId = "";
+  let busy = false, errorMessage = "", message = "", uploadProgress = 0;
+  let videoFile: File | null = null;
+  let form = { videoName: "", videoUrl: "", redTeam1: "", redTeam2: "", blueTeam1: "", blueTeam2: "", motif: "unknown" };
 
-  async function loadJobs() {
-    let response = await fetch("/api/autoscore/jobs");
-    let data = await response.json();
-    if (!response.ok)
-      throw new Error(data.error ?? "Could not load autoscore jobs.");
-    jobs = data.jobs;
-  }
-
-  async function createJob() {
-    busy = true;
-    errorMessage = "";
-    message = "";
+  async function beginSession() {
+    busy = true; errorMessage = ""; message = "";
     try {
       let videoUrl = form.videoUrl.trim();
       if (videoFile) {
-        let uploaded =
-          videoFile.size > 50 * 1024 * 1024
-            ? await uploadToWorkerInChunks(uploadUrl, videoFile)
-            : await uploadToWorker(uploadUrl, videoFile);
-        let ready = await waitForUpload(uploadUrl, uploaded.uploadId);
+        let uploaded = videoFile.size > 50 * 1024 * 1024 ? await uploadChunked(videoFile) : await uploadDirect(videoFile);
+        let ready = await waitForUpload(uploaded.uploadId);
         videoUrl = ready.videoUrl;
       }
+      if (!videoUrl) throw new Error("Upload a video or provide a video URL.");
       let response = await fetch("/api/autoscore/jobs", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          videoName: form.videoName || videoFile?.name || form.matchName,
-          videoUrl,
-        }),
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...form, matchName: form.videoName || videoFile?.name || "DECODE session", videoName: form.videoName || videoFile?.name || "DECODE session", videoUrl }),
       });
       let data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Could not create job.");
-      location.href = `/autoscore/${data.job._id}`;
-    } catch (err) {
-      errorMessage = err instanceof Error ? err.message : String(err);
-    } finally {
-      busy = false;
-      uploadProgress = 0;
-    }
+      if (!response.ok) throw new Error(data.error ?? "Could not start autoscore session.");
+      currentJobId = data.job._id;
+      localStorage.setItem("decodeAutoscoreSessionId", currentJobId);
+    } catch (error) { errorMessage = error instanceof Error ? error.message : String(error); }
+    finally { busy = false; uploadProgress = 0; }
   }
-
-  async function uploadToWorkerInChunks(
-    uploadUrl: string,
-    file: File
-  ): Promise<{ uploadId: string }> {
-    let workerBaseUrl = uploadUrl.replace(/\/upload-video$/, "");
-    let chunkSize = 1 * 1024 * 1024;
-    let totalChunks = Math.ceil(file.size / chunkSize);
-    let createResponse = await fetch(`${workerBaseUrl}/chunked-uploads`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ filename: file.name, totalChunks }),
-    });
-    let upload = await createResponse.json();
-    if (!createResponse.ok)
-      throw new Error(upload.detail ?? upload.error ?? "Could not start upload.");
-
-    for (let index = 0; index < totalChunks; index += 1) {
-      let chunk = file.slice(index * chunkSize, (index + 1) * chunkSize);
-      let response = await fetch(
-        `${workerBaseUrl}/chunked-uploads/${upload.uploadId}/chunks/${index}`,
-        { method: "PUT", body: chunk }
-      );
-      let data = await response.json();
-      if (!response.ok)
-        throw new Error(data.detail ?? data.error ?? "Chunk upload failed.");
+  function resetSession() { currentJobId = ""; localStorage.removeItem("decodeAutoscoreSessionId"); }
+  async function uploadChunked(file: File) {
+    let worker = uploadUrl.replace(/\/upload-video$/, ""), chunkSize = 1024 * 1024, totalChunks = Math.ceil(file.size / chunkSize);
+    let started = await fetch(`${worker}/chunked-uploads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ filename: file.name, totalChunks }) });
+    let upload = await started.json(); if (!started.ok) throw new Error(upload.detail ?? "Could not start upload.");
+    for (let index = 0; index < totalChunks; index++) {
+      let response = await fetch(`${worker}/chunked-uploads/${upload.uploadId}/chunks/${index}`, { method: "PUT", body: file.slice(index * chunkSize, (index + 1) * chunkSize) });
+      if (!response.ok) throw new Error("Chunk upload failed.");
       uploadProgress = ((index + 1) / totalChunks) * 100;
-      message = `Uploading video chunk ${index + 1} of ${totalChunks}...`;
+      message = `Uploading video ${index + 1} of ${totalChunks} chunks...`;
     }
-
-    let completeResponse = await fetch(
-      `${workerBaseUrl}/chunked-uploads/${upload.uploadId}/complete`,
-      { method: "POST" }
-    );
-    let completed = await completeResponse.json();
-    if (!completeResponse.ok)
-      throw new Error(
-        completed.detail ?? completed.error ?? "Could not finish upload."
-      );
-    return completed;
+    let completed = await fetch(`${worker}/chunked-uploads/${upload.uploadId}/complete`, { method: "POST" });
+    let data = await completed.json(); if (!completed.ok) throw new Error(data.detail ?? "Could not finish upload."); return data;
   }
-
-  function uploadToWorker(
-    uploadUrl: string,
-    file: File
-  ): Promise<{ uploadId: string }> {
+  function uploadDirect(file: File): Promise<{ uploadId: string }> {
     return new Promise((resolve, reject) => {
-      let request = new XMLHttpRequest();
-      request.open("POST", uploadUrl);
-      request.upload.onprogress = (event) => {
-        if (event.lengthComputable)
-          uploadProgress = (event.loaded / event.total) * 100;
-      };
-      request.onload = () => {
-        let data = JSON.parse(request.responseText || "{}");
-        if (request.status >= 200 && request.status < 300) resolve(data);
-        else
-          reject(
-            new Error(data.detail ?? data.error ?? "Video upload failed.")
-          );
-      };
-      request.onerror = () => reject(new Error("Video upload failed."));
-      let formData = new FormData();
-      formData.append("file", file);
-      request.send(formData);
+      let request = new XMLHttpRequest(); request.open("POST", uploadUrl);
+      request.upload.onprogress = (event) => event.lengthComputable && (uploadProgress = (event.loaded / event.total) * 100);
+      request.onload = () => { let data = JSON.parse(request.responseText || "{}"); request.status < 300 ? resolve(data) : reject(new Error(data.detail ?? "Upload failed.")); };
+      request.onerror = () => reject(new Error("Upload failed."));
+      let payload = new FormData(); payload.append("file", file); request.send(payload);
     });
   }
-
-  async function waitForUpload(
-    uploadUrl: string,
-    uploadId: string
-  ): Promise<{ videoUrl: string }> {
-    let workerBaseUrl = uploadUrl.replace(/\/upload-video$/, "");
+  async function waitForUpload(uploadId: string) {
+    let worker = uploadUrl.replace(/\/upload-video$/, "");
     while (true) {
-      let response = await fetch(`${workerBaseUrl}/uploads/${uploadId}`);
-      let data = await response.json();
-      if (!response.ok)
-        throw new Error(
-          data.detail ?? data.error ?? "Could not read upload status."
-        );
+      let response = await fetch(`${worker}/uploads/${uploadId}`), data = await response.json();
       if (data.status === "ready") return data;
-      if (data.status === "failed")
-        throw new Error(data.errorMessage ?? "Video processing failed.");
+      if (data.status === "failed") throw new Error(data.errorMessage ?? "Video processing failed.");
       message = "Preparing playback video...";
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      await new Promise((resolve) => setTimeout(resolve, 1800));
     }
   }
-
-  function score(job: any) {
-    return job.summary
-      ? `${job.summary.estimatedRedScore ?? 0} - ${
-          job.summary.estimatedBlueScore ?? 0
-        }`
-      : "-";
-  }
-
-  onMount(() => loadJobs().catch((err) => (errorMessage = err.message)));
+  onMount(() => currentJobId = localStorage.getItem("decodeAutoscoreSessionId") ?? "");
 </script>
 
 <Head title="DECODE Autoscore" />
-<WidthProvider width="1240px">
-  <Card>
-    <header>
+{#if currentJobId}
+  <div class="session-head"><button class="secondary" on:click={resetSession}>Start new video</button></div>
+  <AutoscoreWorkspace suppliedJobId={currentJobId} embedded />
+{:else}
+  <WidthProvider width="1120px"><Card>
+    <header><h1>DECODE Autoscore</h1><p>Prototype video-based scoring estimate. Not official FTC scoring.</p></header>
+    <div class="steps">{#each steps as step, index}<span class:active={index === 0}>{index + 1}. {step}</span>{/each}</div>
+    <section class="upload">
       <div>
-        <h1>DECODE Autoscore</h1>
-        <p>Match video review and autoscoring cockpit</p>
+        <h2>Start with one match video</h2>
+        <p>Upload one DECODE video, then mark the field zones directly on the video before running artifact detection.</p>
       </div>
-      <button class="secondary" on:click={loadJobs}>Refresh</button>
-    </header>
-
-    <form class="new-job" on:submit|preventDefault={createJob}>
-      <input bind:value={form.matchName} placeholder="Match name" required />
-      <input bind:value={form.eventName} placeholder="Event name" />
-      <input bind:value={form.videoName} placeholder="Video name" />
-      <select bind:value={form.motif}>
-        <option value="unknown">Motif unknown</option>
-        <option value="GPP">GPP</option>
-        <option value="PGP">PGP</option>
-        <option value="PPG">PPG</option>
-      </select>
-      <input bind:value={form.redTeam1} placeholder="Red team 1" />
-      <input bind:value={form.redTeam2} placeholder="Red team 2" />
-      <input bind:value={form.blueTeam1} placeholder="Blue team 1" />
-      <input bind:value={form.blueTeam2} placeholder="Blue team 2" />
-      <input
-        bind:value={form.videoUrl}
-        placeholder="Video URL or upload below"
-      />
-      <input
-        type="file"
-        accept="video/*,.mov,.mp4,.webm,.mkv"
-        on:change={(event) =>
-          (videoFile = event.currentTarget.files?.[0] ?? null)}
-      />
-      <button disabled={busy}>New Autoscore Job</button>
-    </form>
-
-    {#if uploadProgress > 0}<p class="notice">
-        Uploading video {uploadProgress.toFixed(0)}%
-      </p>{/if}
-    {#if message}<p class="notice">{message}</p>{/if}
-    {#if errorMessage}<p class="error">{errorMessage}</p>{/if}
-
-    <section class="jobs">
-      <div class="table-head">
-        <span>Match</span><span>Event</span><span>Teams</span><span>Status</span
-        ><span>Score</span>
-      </div>
-      {#each jobs as job}
-        <a class="job-row" href={`/autoscore/${job._id}`}>
-          <strong>{job.matchName || job.videoName}</strong>
-          <span>{job.eventName || "-"}</span>
-          <span
-            >{job.redTeam1 || "?"}/{job.redTeam2 || "?"} vs {job.blueTeam1 ||
-              "?"}/{job.blueTeam2 || "?"}</span
-          >
-          <em>{job.status}</em>
-          <b>{score(job)}</b>
-        </a>
-      {:else}
-        <p class="empty">No DECODE autoscore jobs yet.</p>
-      {/each}
+      <form on:submit|preventDefault={beginSession}>
+        <input bind:value={form.videoName} placeholder="Video/session name" />
+        <input bind:value={form.videoUrl} placeholder="Optional direct video URL" />
+        <input type="file" accept="video/*,.mov,.mp4,.webm,.mkv" on:change={(event) => videoFile = event.currentTarget.files?.[0] ?? null} />
+        <select bind:value={form.motif}><option value="unknown">Motif unknown</option><option>GPP</option><option>PGP</option><option>PPG</option></select>
+        <input bind:value={form.redTeam1} placeholder="Red team 1 optional" /><input bind:value={form.redTeam2} placeholder="Red team 2 optional" />
+        <input bind:value={form.blueTeam1} placeholder="Blue team 1 optional" /><input bind:value={form.blueTeam2} placeholder="Blue team 2 optional" />
+        <button disabled={busy}>Open Autoscore Workspace</button>
+      </form>
     </section>
-  </Card>
-</WidthProvider>
+    {#if uploadProgress > 0}<p class="notice">Uploading {uploadProgress.toFixed(0)}%</p>{/if}
+    {#if message}<p class="notice">{message}</p>{/if}{#if errorMessage}<p class="error">{errorMessage}</p>{/if}
+  </Card></WidthProvider>
+{/if}
 
 <style>
-  h1,
-  p {
-    margin: 0;
-  }
-  header {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    align-items: flex-start;
-    margin-bottom: 20px;
-  }
-  header p,
-  .empty {
-    color: var(--secondary-text-color);
-  }
-  button,
-  input,
-  select {
-    border: 1px solid var(--sep-color);
-    border-radius: 8px;
-    padding: 12px;
-    font: inherit;
-    background: var(--form-bg-color);
-    color: var(--text-color);
-  }
-  button {
-    background: var(--theme-color);
-    color: var(--theme-text-color);
-    cursor: pointer;
-  }
-  button.secondary {
-    background: var(--form-bg-color);
-    color: var(--text-color);
-  }
-  .new-job {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
-    margin-bottom: 18px;
-  }
-  .new-job input:nth-of-type(9),
-  .new-job input[type="file"],
-  .new-job button {
-    grid-column: span 2;
-  }
-  .notice,
-  .error {
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 12px;
-  }
-  .notice {
-    background: var(--green-stat-bg-color);
-    color: var(--green-stat-color);
-  }
-  .error {
-    background: var(--red-stat-bg-color);
-    color: var(--red-stat-color);
-  }
-  .jobs {
-    display: grid;
-  }
-  .table-head,
-  .job-row {
-    display: grid;
-    grid-template-columns: 1.1fr 1fr 1.3fr 0.8fr 0.6fr;
-    gap: 12px;
-    align-items: center;
-    padding: 12px;
-  }
-  .table-head {
-    color: var(--secondary-text-color);
-    font-size: var(--sm-font-size);
-  }
-  .job-row {
-    border-top: 1px solid var(--sep-color);
-    color: inherit;
-    text-decoration: none;
-  }
-  .job-row em {
-    font-style: normal;
-  }
-  @media (max-width: 850px) {
-    .new-job,
-    .table-head,
-    .job-row {
-      grid-template-columns: 1fr;
-    }
-    .new-job input:nth-of-type(9),
-    .new-job input[type="file"],
-    .new-job button {
-      grid-column: auto;
-    }
-    .table-head {
-      display: none;
-    }
-  }
+  h1,h2,p{margin:0}.session-head{max-width:1540px;margin:0 auto 10px;padding:0 16px;text-align:right}header{display:grid;gap:6px;margin-bottom:18px}header p,.upload p{color:var(--secondary-text-color)}
+  .steps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}.steps span{padding:8px 10px;border:1px solid var(--sep-color);border-radius:999px;color:var(--secondary-text-color)}.steps .active{border-color:var(--theme-color);color:var(--text-color)}
+  .upload{display:grid;grid-template-columns:0.8fr 1.2fr;gap:22px;align-items:start}.upload form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  input,select,button{padding:12px;border:1px solid var(--sep-color);border-radius:8px;background:var(--form-bg-color);color:var(--text-color)}button{background:var(--theme-color);color:var(--theme-text-color);cursor:pointer}.secondary{background:var(--form-bg-color);color:var(--text-color)}
+  input[type="file"],button{grid-column:1/-1}.notice,.error{padding:12px;border-radius:8px;margin-top:12px}.notice{background:var(--green-stat-bg-color)}.error{background:var(--red-stat-bg-color)}
+  @media(max-width:850px){.upload,.upload form{grid-template-columns:1fr}}
 </style>

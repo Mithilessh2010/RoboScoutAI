@@ -19,18 +19,12 @@ import { AutoscoreTrackedArtifact } from "../db/schemas/AutoscoreTrackedArtifact
 const REQUIRED_ZONE_TYPES = [
   "goal_red",
   "goal_blue",
-  "classifier_red",
-  "classifier_blue",
   "square_red",
   "square_blue",
   "ramp_red",
   "ramp_blue",
   "depot_red",
   "depot_blue",
-  "base_red",
-  "base_blue",
-  "launch_line_red",
-  "launch_line_blue",
   "gate_red",
   "gate_blue",
 ];
@@ -111,6 +105,18 @@ export async function recalculateDecodeScore(jobId: string) {
     detections,
     requiredZoneWarnings(zones, await AutoscoreJob.findById(jobId).lean())
   );
+}
+
+export async function getDecodeWalkthrough(jobId: string) {
+  await connectDB();
+  let events = await AutoscoreTimelineEvent.find({ jobId }).sort({ timestamp: 1 }).lean();
+  let summary = await AutoscoreSummary.findOne({ jobId }).lean();
+  let warnings = summary?.warnings ?? [];
+  return {
+    markdown: renderWalkthroughMarkdown(events, summary, warnings),
+    items: events.map(walkthroughItem),
+    warnings,
+  };
 }
 
 function buildFrameSnapshots(detections, zones) {
@@ -808,4 +814,45 @@ function average(values = []) {
 function median(values) {
   let sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
+}
+function walkthroughItem(row) {
+  return {
+    timestamp: row.timestamp,
+    frameNumber: row.frameNumber ?? null,
+    alliance: row.alliance,
+    eventType: row.eventType,
+    points: row.points,
+    confidence: row.confidence,
+    explanation: row.reason,
+    artifactColor: row.artifactColor ?? null,
+    reviewNeeded:
+      row.eventType === "ramp_count_drop_unexplained" || row.confidence < 0.65,
+  };
+}
+function renderWalkthroughMarkdown(events, summary, warnings) {
+  let lines = [
+    "# DECODE Autoscore Walkthrough",
+    "",
+    `Estimated final score: Red ${summary?.estimatedRedScore ?? 0} - Blue ${summary?.estimatedBlueScore ?? 0}`,
+    "",
+  ];
+  for (let row of events) {
+    lines.push(
+      `## ${formatTimestamp(row.timestamp)} - ${capitalize(row.alliance)} ${row.eventType.replaceAll("_", " ")} ${row.points ? `+${row.points}` : ""}`.trim(),
+      `${row.reason} Confidence: ${Math.round((row.confidence ?? 0) * 100)}%.`,
+      ""
+    );
+  }
+  if (warnings.length) {
+    lines.push("## Review warnings", ...warnings.map((warning) => `- ${warning}`), "");
+  }
+  return lines.join("\n");
+}
+function formatTimestamp(timestamp) {
+  let minutes = Math.floor(timestamp / 60);
+  let seconds = (timestamp % 60).toFixed(1).padStart(4, "0");
+  return `${String(minutes).padStart(2, "0")}:${seconds}`;
+}
+function capitalize(value) {
+  return value ? value[0].toUpperCase() + value.slice(1) : "";
 }

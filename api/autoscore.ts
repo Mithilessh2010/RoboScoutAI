@@ -29,6 +29,7 @@ import {
 } from "../packages/server/src/autoscore/service";
 import {
   recalculateDecodeScore,
+  getDecodeWalkthrough,
   runFullDecodeAutoscore,
 } from "../packages/server/src/autoscore/decode";
 import { connectDB } from "../packages/server/src/db/mongodb";
@@ -186,6 +187,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (req.method !== "GET") return methodNotAllowed(res, "GET");
       let result = await getAutoscoreJob(jobId);
       return res.status(200).json({ summary: result?.summary ?? null });
+    }
+
+    if (resource === "walkthrough") {
+      if (req.method !== "GET") return methodNotAllowed(res, "GET");
+      return res.status(200).json(await getDecodeWalkthrough(jobId));
     }
 
     if (resource === "logs") {
