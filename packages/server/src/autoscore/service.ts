@@ -158,6 +158,7 @@ export async function updateAutoscoreJob(jobId: string, input: any) {
     "confidenceThreshold",
     "manualLeave",
     "manualBase",
+    "confirmedZones",
   ];
   let update = Object.fromEntries(
     allowed.filter((key) => key in input).map((key) => [key, input[key]])
@@ -181,7 +182,7 @@ export async function getAutoscoreDetections(jobId: string, limit = 500) {
   await connectDB();
   let job = await AutoscoreJob.findById(jobId);
   if (!job) return null;
-  let cappedLimit = Math.min(Math.max(limit, 1), 2000);
+  let cappedLimit = Math.min(Math.max(limit, 1), 50000);
   let detections = await AutoscoreDetection.find({ jobId: job._id })
     .sort({ frameNumber: 1, confidence: -1 })
     .limit(cappedLimit);
@@ -402,7 +403,11 @@ export async function deleteGateEvent(gateEventId: string) {
   return AutoscoreGateEvent.findByIdAndDelete(gateEventId);
 }
 
-export async function runBackendArtifactDetection(jobId: string, detectorMode = "artifact") {
+export async function runBackendArtifactDetection(
+  jobId: string,
+  detectorMode = "artifact",
+  options: { stride?: number; saveAnnotated?: boolean } = {}
+) {
   await connectDB();
   let job = await AutoscoreJob.findById(jobId);
   if (!job) {
@@ -410,7 +415,7 @@ export async function runBackendArtifactDetection(jobId: string, detectorMode = 
   }
 
   if (AUTOSCORE_WORKER_URL) {
-    return startRemoteArtifactDetection(job, detectorMode);
+    return startRemoteArtifactDetection(job, detectorMode, options);
   }
 
   let sourcePath = await resolveJobVideoSource(job);
@@ -450,10 +455,10 @@ export async function runBackendArtifactDetection(jobId: string, detectorMode = 
         "--detector-mode",
         detectorMode,
         "--stride",
-        "90",
+        String(options.stride ?? (detectorMode === "artifact" ? 30 : 45)),
         "--conf",
         "0.25",
-        "--save-annotated",
+        ...(options.saveAnnotated ? ["--save-annotated"] : []),
         "--out",
         outputDir,
       ],
@@ -539,7 +544,11 @@ export async function runBackendArtifactDetection(jobId: string, detectorMode = 
   }
 }
 
-async function startRemoteArtifactDetection(job: any, detectorMode = "artifact") {
+async function startRemoteArtifactDetection(
+  job: any,
+  detectorMode = "artifact",
+  options: { stride?: number; saveAnnotated?: boolean } = {}
+) {
   if (!job.videoUrl) {
     throw new Error(
       "Fly autoscore worker requires a videoUrl. Upload the video or provide a direct video URL."
@@ -562,9 +571,9 @@ async function startRemoteArtifactDetection(job: any, detectorMode = "artifact")
     body: JSON.stringify({
       jobId: String(job._id),
       videoUrl: job.videoUrl,
-      stride: detectorMode === "artifact" ? 30 : 45,
+      stride: options.stride ?? (detectorMode === "artifact" ? 30 : 45),
       conf: 0.25,
-      saveAnnotated: false,
+      saveAnnotated: options.saveAnnotated ?? false,
       detectorMode,
     }),
   });

@@ -95,7 +95,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (resource === "detections") {
       if (req.method !== "GET") return methodNotAllowed(res, "GET");
-      let limit = Number(req.query.limit ?? 500);
+      let limit = Math.min(Number(req.query.limit ?? 500), 50000);
       let result = await getAutoscoreDetections(jobId, limit);
       if (!result) return res.status(404).json({ error: "Autoscore job not found" });
       return res.status(200).json(result);
@@ -109,6 +109,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (resource === "run-artifact-detection") {
       if (req.method !== "POST") return methodNotAllowed(res, "POST");
       return res.status(200).json(await runBackendArtifactDetection(jobId));
+    }
+
+    if (resource === "run-full-frame-artifact-detection") {
+      if (req.method !== "POST") return methodNotAllowed(res, "POST");
+      return res.status(200).json(await runBackendArtifactDetection(jobId, "artifact", { stride: 1 }));
     }
 
     if (resource === "run-robot-detection") {

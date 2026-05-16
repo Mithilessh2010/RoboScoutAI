@@ -354,14 +354,22 @@ export async function runRobotDetection(jobId: string) {
   return runDetection(jobId, "robot");
 }
 
-async function runDetection(jobId: string, detectorMode: "artifact" | "robot" | "both") {
+export async function runFullFrameArtifactDetection(jobId: string) {
+  return runDetection(jobId, "artifact", { stride: 1 });
+}
+
+async function runDetection(
+  jobId: string,
+  detectorMode: "artifact" | "robot" | "both",
+  options: { stride?: number; saveAnnotated?: boolean } = {}
+) {
   await ensureAutoscoreDb();
   let job = await AutoscoreJob.findById(jobId);
   if (!job) {
     throw error(404, "Autoscore job not found.");
   }
   if (AUTOSCORE_WORKER_URL) {
-    return startRemoteArtifactDetection(job, detectorMode);
+    return startRemoteArtifactDetection(job, detectorMode, options);
   }
 
   let root = repoRoot();
@@ -395,7 +403,7 @@ async function runDetection(jobId: string, detectorMode: "artifact" | "robot" | 
         "--detector-mode",
         detectorMode,
         "--stride",
-        detectorMode === "artifact" ? "30" : "45",
+        String(options.stride ?? (detectorMode === "artifact" ? 30 : 45)),
         "--conf",
         "0.25",
         "--out",
@@ -488,7 +496,11 @@ async function runDetection(jobId: string, detectorMode: "artifact" | "robot" | 
   }
 }
 
-async function startRemoteArtifactDetection(job: any, detectorMode = "artifact") {
+async function startRemoteArtifactDetection(
+  job: any,
+  detectorMode = "artifact",
+  options: { stride?: number; saveAnnotated?: boolean } = {}
+) {
   if (!job.videoUrl) {
     throw error(
       400,
@@ -511,9 +523,9 @@ async function startRemoteArtifactDetection(job: any, detectorMode = "artifact")
     body: JSON.stringify({
       jobId: String(job._id),
       videoUrl: job.videoUrl,
-      stride: detectorMode === "artifact" ? 30 : 45,
+      stride: options.stride ?? (detectorMode === "artifact" ? 30 : 45),
       conf: 0.25,
-      saveAnnotated: false,
+      saveAnnotated: options.saveAnnotated ?? false,
       detectorMode,
     }),
   });

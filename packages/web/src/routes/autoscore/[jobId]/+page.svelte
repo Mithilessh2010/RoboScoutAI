@@ -11,6 +11,16 @@
     "base_red", "base_blue", "launch_line_red", "launch_line_blue",
   ];
   const optionalZones = ["obelisk_zone", "field_boundary", "loading_zone_red", "loading_zone_blue"];
+  const bilateralZoneGroups = [
+    { label: "Goal", red: "goal_red", blue: "goal_blue" },
+    { label: "Square", red: "square_red", blue: "square_blue" },
+    { label: "Classifier", red: "classifier_red", blue: "classifier_blue" },
+    { label: "Ramp", red: "ramp_red", blue: "ramp_blue" },
+    { label: "Depot", red: "depot_red", blue: "depot_blue" },
+    { label: "Gate", red: "gate_red", blue: "gate_blue" },
+    { label: "Base", red: "base_red", blue: "base_blue" },
+    { label: "Launch line", red: "launch_line_red", blue: "launch_line_blue" },
+  ];
   const tabs = ["Setup", "Calibrate", "Detect", "Score", "Review", "JSON"];
   let job: any = null, summary: any = null, detections: any[] = [], events: any[] = [], zones: any[] = [];
   let gateEvents: any[] = [], penalties: any[] = [], rampCounts: any[] = [];
@@ -25,7 +35,8 @@
   let rampCorrection = { alliance: "red", stableCount: 0, note: "Manual correction" };
 
   $: jobId = $page.params.jobId;
-  $: visibleDetections = detections.filter((d) => Math.abs(d.timestamp - currentTime) < 1.6);
+  $: nearestDetectionTime = detections.length ? detections.reduce((best, detection) => Math.abs(detection.timestamp - currentTime) < Math.abs(best - currentTime) ? detection.timestamp : best, detections[0].timestamp) : null;
+  $: visibleDetections = nearestDetectionTime == null ? [] : detections.filter((d) => d.timestamp === nearestDetectionTime);
   $: visibleArtifacts = visibleDetections.filter((d) => d.className !== "robot");
   $: visibleRobots = visibleDetections.filter((d) => d.className === "robot");
   $: live = scoreAt(currentTime);
@@ -47,8 +58,9 @@
     job = detail.job; summary = detail.summary;
     job.manualLeave ??= { redTeam1: "unknown", redTeam2: "unknown", blueTeam1: "unknown", blueTeam2: "unknown" };
     job.manualBase ??= { redTeam1: "unknown", redTeam2: "unknown", blueTeam1: "unknown", blueTeam2: "unknown" };
+    job.confirmedZones ??= { goal_red: false, goal_blue: false };
     zones = (await api(`/api/autoscore/jobs/${jobId}/calibration-zones`)).zones;
-    detections = (await api(`/api/autoscore/jobs/${jobId}/detections?limit=2000`)).detections ?? [];
+    detections = (await api(`/api/autoscore/jobs/${jobId}/detections?limit=50000`)).detections ?? [];
     events = (await api(`/api/autoscore/jobs/${jobId}/timeline`)).events ?? [];
     gateEvents = (await api(`/api/autoscore/jobs/${jobId}/gate-events`)).gateEvents ?? [];
     penalties = (await api(`/api/autoscore/jobs/${jobId}/penalties`)).penalties ?? [];
@@ -58,6 +70,20 @@
   async function saveJob() {
     job = (await api(`/api/autoscore/jobs/${jobId}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(job) })).job;
     message = "Setup saved.";
+  }
+  async function confirmGoal(zoneType: "goal_red" | "goal_blue") {
+    if (!zones.some((zone) => zone.zoneType === zoneType)) {
+      errorMessage = `Draw and save ${zoneType} before confirming it.`;
+      return;
+    }
+    job.confirmedZones[zoneType] = true;
+    await saveJob();
+  }
+  function chooseZone(zoneType: string) {
+    activeZone = zoneType;
+    drawMode = "draw";
+    selectedZoneId = "";
+    draftRect = null;
   }
   async function run(url: string, success: string) {
     busy = true; errorMessage = "";
@@ -75,6 +101,10 @@
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ zoneType, alliance, shapeType: "rectangle", coordinates, index, frameTimestamp: currentTime }),
     });
+    if (zoneType === "goal_red" || zoneType === "goal_blue") {
+      job.confirmedZones[zoneType] = false;
+      await saveJob();
+    }
     draftRect = null; selectedZoneId = ""; await load();
   }
   async function updateSelectedZone() {
@@ -83,11 +113,19 @@
       method: "PUT", headers: { "content-type": "application/json" },
       body: JSON.stringify({ coordinates: selectedZone.coordinates, shapeType: "rectangle" }),
     });
+    if (selectedZone.zoneType === "goal_red" || selectedZone.zoneType === "goal_blue") {
+      job.confirmedZones[selectedZone.zoneType] = false;
+      await saveJob();
+    }
     message = "Zone updated."; await load();
   }
   async function deleteSelectedZone() {
     if (!selectedZone) return;
     await api(`/api/autoscore/jobs/${jobId}/calibration-zones/${selectedZone._id}`, { method: "DELETE" });
+    if (selectedZone.zoneType === "goal_red" || selectedZone.zoneType === "goal_blue") {
+      job.confirmedZones[selectedZone.zoneType] = false;
+      await saveJob();
+    }
     selectedZoneId = ""; await load();
   }
   async function clearAllZones() {
@@ -237,13 +275,26 @@
     {:else if activeTab === "Calibrate"}
       <div class="split"><div>
         <h2>Field Calibration</h2><p class="subtle">Choose a zone, then drag directly on the video. Switch to Select to move or resize a saved zone.</p>
+        <div class="alliance-zone-grid">
+          <section class="zone-lane red-lane"><h3>Red side</h3>
+            {#each bilateralZoneGroups as group}<button class:zone-saved={zones.some((zone) => zone.zoneType === group.red)} class:zone-active={activeZone === group.red} on:click={() => chooseZone(group.red)}>{group.label}</button>{/each}
+          </section>
+          <section class="zone-lane blue-lane"><h3>Blue side</h3>
+            {#each bilateralZoneGroups as group}<button class:zone-saved={zones.some((zone) => zone.zoneType === group.blue)} class:zone-active={activeZone === group.blue} on:click={() => chooseZone(group.blue)}>{group.label}</button>{/each}
+          </section>
+        </div>
+        <div class="goal-confirm">
+          <button class:confirmed={job.confirmedZones.goal_red} on:click={() => confirmGoal("goal_red")}>{job.confirmedZones.goal_red ? "Red goal confirmed" : "Confirm red goal"}</button>
+          <button class:confirmed={job.confirmedZones.goal_blue} on:click={() => confirmGoal("goal_blue")}>{job.confirmedZones.goal_blue ? "Blue goal confirmed" : "Confirm blue goal"}</button>
+        </div>
         <div class="toolbar-row"><select bind:value={activeZone}>{#each [...requiredZones, ...optionalZones, "ramp_index_red", "ramp_index_blue"] as zone}<option>{zone}</option>{/each}</select>
         {#if activeZone.startsWith("ramp_index_")}<input type="number" min="1" max="9" bind:value={slotIndex} />{/if}
         <button class:secondary={drawMode !== "draw"} on:click={() => drawMode="draw"}>Draw</button><button class:secondary={drawMode !== "select"} on:click={() => drawMode="select"}>Select</button>
         <button on:click={saveZone}>Save zone</button><button class="secondary" on:click={updateSelectedZone}>Save edits</button><button class="secondary" on:click={deleteSelectedZone}>Delete selected</button><button class="danger" on:click={clearAllZones}>Clear all</button></div>
       </div><div class="coverage">{#each zoneCoverage as item}<span class:saved={item.saved}>{item.zoneType}</span>{/each}</div></div>
     {:else if activeTab === "Detect"}
-      <h2>Models & Detection</h2><div class="actions"><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-artifact-detection`, "Artifact detection started.")}>Run artifact detection</button><button class="secondary" disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-robot-detection`, "Robot detection started.")}>Run robot detection</button></div>
+      <h2>Models & Detection</h2><div class="actions"><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-artifact-detection`, "Quick artifact detection started.")}>Quick artifact scan</button><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-frame-artifact-detection`, "Full-frame artifact detection started.")}>Full-frame artifact detection</button><button class="secondary" disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-robot-detection`, "Robot detection started.")}>Run robot detection</button></div>
+      <p class="subtle">Full-frame mode runs YOLO on every frame for detailed scoring input. It is much slower than the quick scan because it is doing much more real work.</p>
       <dl><dt>Artifacts</dt><dd>{summary?.artifactGreenCount ?? 0} green · {summary?.artifactPurpleCount ?? 0} purple</dd><dt>Robots</dt><dd>{summary?.robotDetectionCount ?? 0}</dd><dt>Average confidence</dt><dd>{Math.round((summary?.averageConfidence ?? 0)*100)}%</dd></dl>
     {:else if activeTab === "Score"}
       <h2>Scoring Controls</h2><div class="actions"><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-decode-autoscore`, "Full DECODE autoscore calculated.")}>Run full DECODE autoscore</button><button class="secondary" on:click={recalc}>Recalculate after edits</button></div>
@@ -272,6 +323,7 @@
   .warnings p{font-size:12px;margin-top:6px}.panel{margin-top:16px;display:grid;gap:12px}.form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.manual-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.manual-grid label{display:grid;grid-template-columns:1fr 90px 90px}
   input,select,button{padding:9px;border:1px solid var(--sep-color);border-radius:8px;background:var(--form-bg-color);color:var(--text-color)}button{background:var(--theme-color);color:var(--theme-text-color);cursor:pointer}.secondary{background:var(--form-bg-color);color:var(--text-color)}.danger{background:#6e2631}
   .split{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}.coverage{display:flex;gap:6px;flex-wrap:wrap}.coverage span{padding:6px 8px;border:1px solid var(--sep-color);border-radius:999px;color:var(--secondary-text-color)}.coverage .saved{border-color:#38d98a;color:#38d98a}
+  .alliance-zone-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.zone-lane{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:10px;border:1px solid var(--sep-color);border-radius:8px}.zone-lane h3{grid-column:1/-1}.red-lane h3{color:#ff6b7a}.blue-lane h3{color:#62b6ff}.zone-lane button{background:var(--form-bg-color);color:var(--text-color)}.zone-lane .zone-saved{outline:1px solid #38d98a}.zone-lane .zone-active{background:var(--theme-color);color:var(--theme-text-color)}.goal-confirm{display:flex;gap:8px;margin-top:10px}.goal-confirm .confirmed{background:#1d6b4e}
   dl{display:grid;grid-template-columns:180px 1fr;gap:8px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.three>div{display:grid;gap:8px}.review{display:grid;grid-template-columns:minmax(0,1.4fr) 320px;gap:16px}.event-row{display:grid;grid-template-columns:1fr auto auto;gap:6px;margin-top:6px}.event-row button:first-child{text-align:left}.event-row small{display:block}.notice,.error{padding:10px;margin-top:12px;border-radius:8px}.notice{background:var(--green-stat-bg-color)}.error{background:var(--red-stat-bg-color)}pre{max-height:480px;overflow:auto;white-space:pre-wrap;font-size:12px}
-  @media(max-width:1000px){.workspace,.split,.three,.review,.form-grid,.manual-grid{grid-template-columns:1fr}}
+  @media(max-width:1000px){.workspace,.split,.three,.review,.form-grid,.manual-grid,.alliance-zone-grid{grid-template-columns:1fr}}
 </style>

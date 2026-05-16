@@ -54,7 +54,7 @@ export async function runFullDecodeAutoscore(jobId: string) {
   let gateEvents = await AutoscoreGateEvent.find({ jobId })
     .sort({ timestamp: 1 })
     .lean();
-  let warnings = requiredZoneWarnings(zones);
+  let warnings = requiredZoneWarnings(zones, job);
 
   await AutoscoreTimelineEvent.deleteMany({ jobId, manualOverride: false });
   await AutoscoreTrackedArtifact.deleteMany({ jobId });
@@ -109,7 +109,7 @@ export async function recalculateDecodeScore(jobId: string) {
     jobId,
     events,
     detections,
-    requiredZoneWarnings(zones)
+    requiredZoneWarnings(zones, await AutoscoreJob.findById(jobId).lean())
   );
 }
 
@@ -690,11 +690,14 @@ function scoreBucket() {
     penalties: 0,
   };
 }
-function requiredZoneWarnings(zones) {
+function requiredZoneWarnings(zones, job = null) {
   let present = new Set(zones.map((zone) => zone.zoneType));
-  return REQUIRED_ZONE_TYPES.filter((zone) => !present.has(zone)).map(
+  let warnings = REQUIRED_ZONE_TYPES.filter((zone) => !present.has(zone)).map(
     (zone) => `${zone} is not calibrated.`
   );
+  if (!job?.confirmedZones?.goal_red) warnings.push("goal_red is not confirmed.");
+  if (!job?.confirmedZones?.goal_blue) warnings.push("goal_blue is not confirmed.");
+  return warnings;
 }
 function recentPathEvidence(frames, index, alliance) {
   let recent = frames.slice(Math.max(0, index - 6), index + 1);

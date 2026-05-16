@@ -32,6 +32,7 @@ export interface IAutoscoreJob extends Document {
   confidenceThreshold: number;
   manualLeave: Record<string, "yes" | "no" | "unknown">;
   manualBase: Record<string, "none" | "partial" | "full" | "unknown">;
+  confirmedZones: Record<string, boolean>;
   errorMessage?: string;
   predictionJsonPath?: string;
   annotatedFramesPath?: string;
@@ -111,6 +112,13 @@ const autoscoreJobSchema = new Schema<IAutoscoreJob>(
         redTeam2: "unknown",
         blueTeam1: "unknown",
         blueTeam2: "unknown",
+      }),
+    },
+    confirmedZones: {
+      type: Schema.Types.Mixed,
+      default: () => ({
+        goal_red: false,
+        goal_blue: false,
       }),
     },
     errorMessage: { type: String, default: null },
