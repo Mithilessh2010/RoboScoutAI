@@ -119,7 +119,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (resource === "run-robot-detection") {
       if (req.method !== "POST") return methodNotAllowed(res, "POST");
-      return res.status(200).json(await runBackendArtifactDetection(jobId));
+      return res.status(200).json(await runBackendArtifactDetection(jobId, "robot"));
     }
 
     if (resource === "run-full-decode-autoscore") {
@@ -192,6 +192,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (resource === "walkthrough") {
       if (req.method !== "GET") return methodNotAllowed(res, "GET");
       return res.status(200).json(await getDecodeWalkthrough(jobId));
+    }
+
+    if (resource === "export-highlights") {
+      if (req.method !== "POST") return methodNotAllowed(res, "POST");
+      let detail = await getAutoscoreJob(jobId);
+      if (!detail) return res.status(404).json({ error: "Autoscore job not found" });
+      let workerUrl =
+        process.env.AUTOSCORE_WORKER_URL ||
+        process.env.VIDEO_PROCESSING_API_URL ||
+        "https://roboscoutai-autoscore-worker.fly.dev";
+      let response = await fetch(`${workerUrl}/export-highlights`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(process.env.AUTOSCORE_WORKER_SECRET
+            ? { authorization: `Bearer ${process.env.AUTOSCORE_WORKER_SECRET}` }
+            : {}),
+        },
+        body: JSON.stringify({ jobId, videoUrl: detail.job.videoUrl }),
+      });
+      if (!response.ok) {
+        let body = await response.json().catch(() => ({}));
+        return res.status(response.status).json({
+          error: body.detail ?? "Could not export highlights.",
+        });
+      }
+      let buffer = Buffer.from(await response.arrayBuffer());
+      res.setHeader(
+        "Content-Type",
+        response.headers.get("content-type") ?? "application/zip"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        response.headers.get("content-disposition") ??
+          `attachment; filename="decode-highlights-${jobId}.zip"`
+      );
+      return res.status(200).send(buffer);
     }
 
     if (resource === "logs") {
