@@ -242,10 +242,7 @@
   async function downloadHighlights() {
     busy = true; errorMessage = "";
     try {
-      let response = await fetch("https://roboscoutai-autoscore-worker.fly.dev/export-highlights", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ jobId, videoUrl: job.videoUrl }),
-      });
+      let response = await fetch(`/api/autoscore/jobs/${jobId}/export-highlights`, { method: "POST" });
       if (!response.ok) {
         let data = await response.json().catch(() => ({}));
         throw new Error(data.detail ?? data.error ?? "Could not export highlights.");
