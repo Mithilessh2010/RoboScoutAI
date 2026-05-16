@@ -8,10 +8,11 @@
   export let embedded = false;
 
   const requiredZones = [
+    "field_boundary",
     "goal_red", "goal_blue", "square_red", "square_blue",
     "ramp_red", "ramp_blue", "depot_red", "depot_blue", "gate_red", "gate_blue",
   ];
-  const optionalZones = ["base_red", "base_blue", "launch_line_red", "launch_line_blue", "obelisk_zone", "field_boundary", "loading_zone_red", "loading_zone_blue"];
+  const optionalZones = ["base_red", "base_blue", "launch_line_red", "launch_line_blue", "obelisk_zone", "loading_zone_red", "loading_zone_blue"];
   const bilateralZoneGroups = [
     { label: "Goal", red: "goal_red", blue: "goal_blue" },
     { label: "Square", red: "square_red", blue: "square_blue" },
@@ -34,12 +35,14 @@
   let job: any = null, summary: any = null, detections: any[] = [], events: any[] = [], zones: any[] = [];
   let gateEvents: any[] = [], penalties: any[] = [], rampCounts: any[] = [], walkthrough: any = null;
   let video: HTMLVideoElement, overlay: HTMLCanvasElement;
-  let currentTime = 0, activeTab = "Calibrate", activeZone = "goal_red", selectedZoneId = "";
+  let currentTime = 0, activeTab = "Calibrate", activeZone = "field_boundary", selectedZoneId = "";
   let slotIndex = 1, drawMode: "draw" | "select" = "draw", dragMode = "", dragStart: any = null, draftRect: any = null;
   let calibrationMode: "dual" | "solo_red" | "solo_blue" = "dual";
   let busy = false, message = "", errorMessage = "";
   let uploadPoller: ReturnType<typeof setInterval> | null = null;
   let detectionPoller: ReturnType<typeof setInterval> | null = null;
+  let detectionWindow = { start: -Infinity, end: -Infinity };
+  let loadingDetectionWindow = false;
   let autoAdvanceZone = true;
   let toggles: any = { zones: true, detections: true, labels: true, confidence: true, eventMarkers: true, rampCounts: true, depotCounts: true };
   let manualEvent = { alliance: "red", eventType: "classified", points: 3, confidence: 1, reason: "Manual review adjustment" };
@@ -64,9 +67,9 @@
     blue: latestState("blue", currentTime),
   };
   $: visibleRequiredZones = calibrationMode === "solo_red"
-    ? redRequiredZones
+    ? ["field_boundary", ...redRequiredZones]
     : calibrationMode === "solo_blue"
-    ? blueRequiredZones
+    ? ["field_boundary", ...blueRequiredZones]
     : requiredZones;
   $: selectableZones = calibrationMode === "solo_red"
     ? [...redCalibrationSequence, ...sharedZones, ...redOnlyZones]
@@ -89,7 +92,7 @@
     job.manualBase ??= { redTeam1: "unknown", redTeam2: "unknown", blueTeam1: "unknown", blueTeam2: "unknown" };
     job.confirmedZones ??= { goal_red: false, goal_blue: false };
     zones = (await api(`/api/autoscore/jobs/${jobId}/calibration-zones`)).zones;
-    detections = (await api(`/api/autoscore/jobs/${jobId}/detections?limit=50000`)).detections ?? [];
+    await loadDetectionWindow(currentTime, true);
     events = (await api(`/api/autoscore/jobs/${jobId}/timeline`)).events ?? [];
     gateEvents = (await api(`/api/autoscore/jobs/${jobId}/gate-events`)).gateEvents ?? [];
     penalties = (await api(`/api/autoscore/jobs/${jobId}/penalties`)).penalties ?? [];
@@ -97,6 +100,19 @@
     walkthrough = await api(`/api/autoscore/jobs/${jobId}/walkthrough`);
     if (!job.videoUrl && job.uploadId) startUploadPolling();
     draw();
+  }
+  async function loadDetectionWindow(timestamp: number, force = false) {
+    if (loadingDetectionWindow) return;
+    if (!force && timestamp >= detectionWindow.start + 0.5 && timestamp <= detectionWindow.end - 0.5) return;
+    loadingDetectionWindow = true;
+    try {
+      let start = Math.max(0, timestamp - 2);
+      let end = timestamp + 2;
+      detections = (await api(`/api/autoscore/jobs/${jobId}/detections?from=${start}&to=${end}&limit=10000`)).detections ?? [];
+      detectionWindow = { start, end };
+    } finally {
+      loadingDetectionWindow = false;
+    }
   }
   function startUploadPolling() {
     if (uploadPoller || !job?.uploadId) return;
@@ -297,7 +313,7 @@
   }
   function onPointerUp() { dragMode = ""; dragStart = null; }
   function latestState(alliance: string, t: number) { return [...rampCounts].reverse().find((s) => s.alliance === alliance && s.timestamp <= t) ?? null; }
-  function seek(timestamp: number) { video.currentTime = timestamp; currentTime = timestamp; draw(); }
+  function seek(timestamp: number) { video.currentTime = timestamp; currentTime = timestamp; loadDetectionWindow(timestamp); draw(); }
   function phase(t: number) { return t <= 30 ? "AUTO" : t >= 150 ? "ENDGAME" : "TELEOP"; }
   function scoreAt(t: number) { return events.filter((e) => e.timestamp <= t).reduce((out, e) => ({ ...out, [e.alliance]: out[e.alliance] + e.points }), { red: 0, blue: 0 } as any); }
   function detectionCenter(d: any) {
@@ -369,7 +385,7 @@
     <div class="stage">
       <div class="video-wrap">
         {#if job.videoUrl}
-          <video bind:this={video} src={job.videoUrl} controls on:timeupdate={() => { currentTime = video.currentTime; draw(); }} on:loadedmetadata={draw}><track kind="captions" /></video>
+          <video bind:this={video} src={job.videoUrl} controls on:timeupdate={() => { currentTime = video.currentTime; loadDetectionWindow(currentTime); draw(); }} on:loadedmetadata={draw}><track kind="captions" /></video>
         {:else}
           <div class="video-pending">Upload complete. Preparing playback video...</div>
         {/if}

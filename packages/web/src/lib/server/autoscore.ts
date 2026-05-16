@@ -446,7 +446,10 @@ async function runDetection(
     let averageConfidence = confidences.length
       ? confidences.reduce((sum, value) => sum + value, 0) / confidences.length
       : 0;
-    let maxConfidence = confidences.length ? Math.max(...confidences) : 0;
+    let maxConfidence = confidences.reduce(
+      (highest, confidence) => Math.max(highest, confidence),
+      0
+    );
 
     await AutoscoreSummary.findOneAndUpdate(
       { jobId: job._id },

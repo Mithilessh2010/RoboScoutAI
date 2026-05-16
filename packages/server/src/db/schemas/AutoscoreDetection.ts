@@ -60,7 +60,8 @@ const autoscoreDetectionSchema = new Schema<IAutoscoreDetection>(
   { timestamps: true }
 );
 
-autoscoreDetectionSchema.index({ jobId: 1, frameNumber: 1 });
+autoscoreDetectionSchema.index({ jobId: 1, frameNumber: 1, confidence: -1 });
+autoscoreDetectionSchema.index({ jobId: 1, timestamp: 1, confidence: -1 });
 autoscoreDetectionSchema.index({ jobId: 1, className: 1 });
 
 export const AutoscoreDetection =

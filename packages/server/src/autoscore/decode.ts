@@ -17,6 +17,7 @@ import { AutoscoreTimelineEvent } from "../db/schemas/AutoscoreTimelineEvent";
 import { AutoscoreTrackedArtifact } from "../db/schemas/AutoscoreTrackedArtifact";
 
 const REQUIRED_ZONE_TYPES = [
+  "field_boundary",
   "goal_red",
   "goal_blue",
   "square_red",
@@ -39,10 +40,12 @@ export async function runFullDecodeAutoscore(jobId: string) {
     errorMessage: null,
   });
 
-  let detections = await AutoscoreDetection.find({ jobId }).sort({
-    timestamp: 1,
-    confidence: -1,
-  });
+  let detections = await AutoscoreDetection.find({ jobId }).lean();
+  detections.sort(
+    (a, b) =>
+      a.timestamp - b.timestamp ||
+      (b.confidence ?? 0) - (a.confidence ?? 0)
+  );
   let zones = await AutoscoreCalibrationZone.find({ jobId }).lean();
   detections = detectionsInsideFieldBoundary(detections, zones);
   let penalties = await AutoscorePenalty.find({ jobId }).lean();
@@ -150,7 +153,11 @@ function buildFrameSnapshots(detections, zones) {
         : detection.className === "artifact_purple"
         ? "purple"
         : null;
-    let enriched = { ...detection.toObject(), center, artifactColor };
+    let plain =
+      typeof detection?.toObject === "function"
+        ? detection.toObject()
+        : detection;
+    let enriched = { ...plain, center, artifactColor };
     frame.detections.push(enriched);
     for (let zone of zones) {
       if (!pointInPolygon(center, zone.coordinates)) continue;
@@ -175,15 +182,41 @@ function buildRampCountEngine(jobId, frames, gateEvents) {
   let events = [];
   let warnings = [];
   for (let alliance of ["red", "blue"]) {
-    let previousStableCount = 0;
+    let acceptedStableCount = null;
+    let candidateStableCount = null;
+    let candidateSince = null;
+    let candidateSamples = 0;
     let recentCounts = [];
     for (let index = 0; index < frames.length; index += 1) {
       let frame = frames[index];
       let rampDetections = artifactsInZone(frame, `ramp_${alliance}`);
       let rawCount = rampDetections.length;
       recentCounts.push(rawCount);
-      recentCounts = recentCounts.slice(-3);
-      let stableCount = median(recentCounts);
+      recentCounts = recentCounts.slice(-5);
+      let smoothedCount = median(recentCounts);
+
+      if (acceptedStableCount == null) {
+        acceptedStableCount = smoothedCount;
+        candidateStableCount = smoothedCount;
+        candidateSince = frame.timestamp;
+        candidateSamples = 1;
+      } else if (smoothedCount === candidateStableCount) {
+        candidateSamples += 1;
+      } else {
+        candidateStableCount = smoothedCount;
+        candidateSince = frame.timestamp;
+        candidateSamples = 1;
+      }
+
+      let previousStableCount = acceptedStableCount;
+      let candidateAge = frame.timestamp - candidateSince;
+      let confirmedTransition =
+        candidateStableCount !== acceptedStableCount &&
+        candidateSamples >= 3 &&
+        candidateAge >= 0.5;
+      let stableCount = confirmedTransition
+        ? candidateStableCount
+        : acceptedStableCount;
       let countDelta = stableCount - previousStableCount;
       let state = {
         jobId,
@@ -201,28 +234,29 @@ function buildRampCountEngine(jobId, frames, gateEvents) {
       };
       if (countDelta > 0) {
         let pathEvidence = recentPathEvidence(frames, index, alliance);
-        for (let n = 0; n < countDelta; n += 1) {
-          events.push(
-            event(
-              jobId,
-              frame.timestamp,
-              decodePhaseAt(frame.timestamp),
-              "classified",
-              alliance,
-              classifiedPoints(frame.timestamp),
-              pathEvidence
-                ? Math.max(0.7, state.confidence)
-                : Math.max(0.45, state.confidence - 0.15),
-              pathEvidence
-                ? `${alliance} ramp stable count increased ${previousStableCount} -> ${stableCount} after goal/square activity.`
-                : `${alliance} ramp stable count increased ${previousStableCount} -> ${stableCount}; scoring path evidence was weak.`,
-              {
-                artifactColor: rampDetections[n]?.artifactColor ?? null,
-                frameNumber: frame.frameNumber,
-                relatedDetectionIds: state.relatedDetectionIds,
-              }
-            )
-          );
+        if (!pathEvidence) {
+          state.warning = `${alliance} ramp count changed without recent goal/square path evidence; review calibration or tracking before counting it as classified.`;
+          warnings.push(state.warning);
+        } else {
+          for (let n = 0; n < countDelta; n += 1) {
+            events.push(
+              event(
+                jobId,
+                frame.timestamp,
+                decodePhaseAt(frame.timestamp),
+                "classified",
+                alliance,
+                classifiedPoints(frame.timestamp),
+                Math.max(0.7, state.confidence),
+                `${alliance} ramp stable count increased ${previousStableCount} -> ${stableCount} after goal/square activity.`,
+                {
+                  artifactColor: rampDetections[n]?.artifactColor ?? null,
+                  frameNumber: frame.frameNumber,
+                  relatedDetectionIds: state.relatedDetectionIds,
+                }
+              )
+            );
+          }
         }
       }
       if (countDelta < 0) {
@@ -287,7 +321,7 @@ function buildRampCountEngine(jobId, frames, gateEvents) {
         }
       }
       states.push(state);
-      previousStableCount = stableCount;
+      if (confirmedTransition) acceptedStableCount = stableCount;
     }
   }
   return { states, events, warnings };
@@ -296,11 +330,41 @@ function buildRampCountEngine(jobId, frames, gateEvents) {
 function buildOverflowEvents(jobId, frames, states) {
   let rows = [];
   for (let alliance of ["red", "blue"]) {
-    let lastOverflowAt = -Infinity;
+    let acceptedSquareCount = null;
+    let candidateSquareCount = null;
+    let candidateSince = null;
+    let candidateSamples = 0;
+    let recentSquareCounts = [];
     for (let index = 0; index < frames.length; index += 1) {
       let frame = frames[index];
       let square = artifactsInZone(frame, `square_${alliance}`);
-      if (!square.length || frame.timestamp - lastOverflowAt < 2) continue;
+      recentSquareCounts.push(square.length);
+      recentSquareCounts = recentSquareCounts.slice(-5);
+      let smoothedSquareCount = median(recentSquareCounts);
+
+      if (acceptedSquareCount == null) {
+        acceptedSquareCount = smoothedSquareCount;
+        candidateSquareCount = smoothedSquareCount;
+        candidateSince = frame.timestamp;
+        candidateSamples = 1;
+        continue;
+      }
+      if (smoothedSquareCount === candidateSquareCount) {
+        candidateSamples += 1;
+      } else {
+        candidateSquareCount = smoothedSquareCount;
+        candidateSince = frame.timestamp;
+        candidateSamples = 1;
+      }
+      let confirmedSquareTransition =
+        candidateSquareCount !== acceptedSquareCount &&
+        candidateSamples >= 3 &&
+        frame.timestamp - candidateSince >= 0.5;
+      if (!confirmedSquareTransition) continue;
+
+      let squareDelta = candidateSquareCount - acceptedSquareCount;
+      acceptedSquareCount = candidateSquareCount;
+      if (squareDelta <= 0 || !square.length) continue;
       let matchingState = states.find(
         (state) =>
           state.alliance === alliance && state.frameNumber === frame.frameNumber
@@ -317,25 +381,26 @@ function buildOverflowEvents(jobId, frames, states) {
         (matchingState?.stableCount ?? 0) >= DECODE_SCORING.rampSlots ||
         recentPathEvidence(frames, index, alliance);
       if (!likelyOverflow) continue;
-      let detection = square[0];
-      rows.push(
-        event(
-          jobId,
-          frame.timestamp,
-          decodePhaseAt(frame.timestamp),
-          "overflow",
-          alliance,
-          overflowPoints(frame.timestamp),
-          Math.max(0.45, detection.confidence - 0.12),
-          `${alliance} square activity occurred but ramp stable count did not increase.`,
-          {
-            artifactColor: detection.artifactColor,
-            frameNumber: frame.frameNumber,
-            relatedDetectionIds: [detection._id],
-          }
-        )
-      );
-      lastOverflowAt = frame.timestamp;
+      for (let n = 0; n < squareDelta; n += 1) {
+        let detection = square[n] ?? square[0];
+        rows.push(
+          event(
+            jobId,
+            frame.timestamp,
+            decodePhaseAt(frame.timestamp),
+            "overflow",
+            alliance,
+            overflowPoints(frame.timestamp),
+            Math.max(0.45, detection.confidence - 0.12),
+            `${alliance} square stable count increased ${acceptedSquareCount - squareDelta} -> ${acceptedSquareCount}, but ramp stable count did not increase.`,
+            {
+              artifactColor: detection.artifactColor,
+              frameNumber: frame.frameNumber,
+              relatedDetectionIds: [detection._id],
+            }
+          )
+        );
+      }
     }
   }
   return rows;
@@ -663,7 +728,10 @@ async function calculateAndSaveSummary(jobId, events, detections, warnings) {
       robotDetectionCount: detections.filter((det) => det.className === "robot")
         .length,
       averageConfidence: average(confidences),
-      maxConfidence: confidences.length ? Math.max(...confidences) : 0,
+      maxConfidence: confidences.reduce(
+        (highest, confidence) => Math.max(highest, confidence),
+        0
+      ),
       warnings: [...new Set(warnings)],
     },
     { upsert: true, new: true }
@@ -722,12 +790,13 @@ function requiredZoneWarnings(zones, job = null) {
   );
   if (!job?.confirmedZones?.goal_red) warnings.push("goal_red is not confirmed.");
   if (!job?.confirmedZones?.goal_blue) warnings.push("goal_blue is not confirmed.");
-  if (!present.has("field_boundary"))
-    warnings.push("field_boundary is not calibrated; broadcast graphics may appear as false artifact detections.");
   return warnings;
 }
-function recentPathEvidence(frames, index, alliance) {
-  let recent = frames.slice(Math.max(0, index - 6), index + 1);
+function recentPathEvidence(frames, index, alliance, lookbackSeconds = 4) {
+  let timestamp = frames[index]?.timestamp ?? 0;
+  let recent = frames
+    .slice(0, index + 1)
+    .filter((frame) => frame.timestamp >= timestamp - lookbackSeconds);
   let goalAt = recent.findLastIndex(
     (frame) => artifactsInZone(frame, `goal_${alliance}`).length > 0
   );

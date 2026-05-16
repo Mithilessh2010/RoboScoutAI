@@ -182,13 +182,24 @@ export async function getAutoscoreJob(jobId: string) {
   };
 }
 
-export async function getAutoscoreDetections(jobId: string, limit = 500) {
+export async function getAutoscoreDetections(
+  jobId: string,
+  limit = 500,
+  window: { from?: number; to?: number } = {}
+) {
   await connectDB();
   let job = await AutoscoreJob.findById(jobId);
   if (!job) return null;
   let cappedLimit = Math.min(Math.max(limit, 1), 50000);
-  let detections = await AutoscoreDetection.find({ jobId: job._id })
+  let query: any = { jobId: job._id };
+  if (window.from != null || window.to != null) {
+    query.timestamp = {};
+    if (window.from != null) query.timestamp.$gte = window.from;
+    if (window.to != null) query.timestamp.$lte = window.to;
+  }
+  let detections = await AutoscoreDetection.find(query)
     .sort({ frameNumber: 1, confidence: -1 })
+    .allowDiskUse(true)
     .limit(cappedLimit);
   let summary = await AutoscoreSummary.findOne({ jobId: job._id });
   return {
@@ -496,7 +507,10 @@ export async function runBackendArtifactDetection(
       ? confidences.reduce((sum, confidence) => sum + confidence, 0) /
         confidences.length
       : 0;
-    let maxConfidence = confidences.length ? Math.max(...confidences) : 0;
+    let maxConfidence = confidences.reduce(
+      (highest, confidence) => Math.max(highest, confidence),
+      0
+    );
 
     await AutoscoreDetection.deleteMany({ jobId: job._id });
     if (rows.length) await AutoscoreDetection.insertMany(rows);
