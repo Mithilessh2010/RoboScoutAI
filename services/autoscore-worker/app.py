@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -92,6 +93,10 @@ def check_secret(authorization: str | None) -> None:
     expected = f"Bearer {secret}"
     if authorization != expected:
         raise HTTPException(status_code=401, detail="Invalid autoscore worker secret.")
+
+
+def start_background_thread(target, *args) -> None:
+    threading.Thread(target=target, args=args, daemon=True).start()
 
 
 def normalize_video_url(video_url: str) -> str:
@@ -494,7 +499,7 @@ async def upload_video(
                 "updatedAt": now,
             }
         )
-        background_tasks.add_task(process_uploaded_video, insert_result.inserted_id, raw_path, file.filename)
+        start_background_thread(process_uploaded_video, insert_result.inserted_id, raw_path, file.filename)
         return {
             "uploadId": str(insert_result.inserted_id),
             "status": "processing",
@@ -583,7 +588,7 @@ def complete_chunked_upload(upload_id: str, background_tasks: BackgroundTasks) -
         {"_id": upload_object_id},
         {"$set": {"status": "processing", "updatedAt": utcnow()}},
     )
-    background_tasks.add_task(process_uploaded_video, upload_object_id, raw_path, upload.get("originalName"))
+    start_background_thread(process_uploaded_video, upload_object_id, raw_path, upload.get("originalName"))
     shutil.rmtree(upload_dir, ignore_errors=True)
     return {"uploadId": upload_id, "status": "processing"}
 
@@ -663,7 +668,7 @@ def run_artifact_detection(
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     check_secret(authorization)
-    background_tasks.add_task(run_job, request)
+    start_background_thread(run_job, request)
     return {"started": True, "jobId": request.jobId}
 
 
