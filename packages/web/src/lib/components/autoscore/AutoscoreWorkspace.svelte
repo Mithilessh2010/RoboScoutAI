@@ -22,13 +22,23 @@
     { label: "Base", red: "base_red", blue: "base_blue" },
     { label: "Launch line", red: "launch_line_red", blue: "launch_line_blue" },
   ];
+  const sharedZones = ["obelisk_zone", "field_boundary"];
+  const redOnlyZones = ["loading_zone_red", "ramp_index_red"];
+  const blueOnlyZones = ["loading_zone_blue", "ramp_index_blue"];
+  const redRequiredZones = ["goal_red", "square_red", "ramp_red", "depot_red", "gate_red"];
+  const blueRequiredZones = ["goal_blue", "square_blue", "ramp_blue", "depot_blue", "gate_blue"];
+  const fullCalibrationSequence = bilateralZoneGroups.flatMap((group) => [group.red, group.blue]);
+  const redCalibrationSequence = bilateralZoneGroups.map((group) => group.red);
+  const blueCalibrationSequence = bilateralZoneGroups.map((group) => group.blue);
   const tabs = ["Setup", "Calibrate", "Detect", "Score", "Review", "JSON"];
   let job: any = null, summary: any = null, detections: any[] = [], events: any[] = [], zones: any[] = [];
   let gateEvents: any[] = [], penalties: any[] = [], rampCounts: any[] = [], walkthrough: any = null;
   let video: HTMLVideoElement, overlay: HTMLCanvasElement;
   let currentTime = 0, activeTab = "Calibrate", activeZone = "goal_red", selectedZoneId = "";
   let slotIndex = 1, drawMode: "draw" | "select" = "draw", dragMode = "", dragStart: any = null, draftRect: any = null;
+  let calibrationMode: "dual" | "solo_red" | "solo_blue" = "dual";
   let busy = false, message = "", errorMessage = "";
+  let autoAdvanceZone = true;
   let toggles: any = { zones: true, detections: true, labels: true, confidence: true, eventMarkers: true, rampCounts: true, depotCounts: true };
   let manualEvent = { alliance: "red", eventType: "classified", points: 3, confidence: 1, reason: "Manual review adjustment" };
   let gate = { alliance: "red", releasedCount: null, note: "Manual gate opened" };
@@ -45,7 +55,17 @@
     red: latestState("red", currentTime),
     blue: latestState("blue", currentTime),
   };
-  $: zoneCoverage = requiredZones.map((zoneType) => ({ zoneType, saved: zones.some((z) => z.zoneType === zoneType) }));
+  $: visibleRequiredZones = calibrationMode === "solo_red"
+    ? redRequiredZones
+    : calibrationMode === "solo_blue"
+    ? blueRequiredZones
+    : requiredZones;
+  $: selectableZones = calibrationMode === "solo_red"
+    ? [...redCalibrationSequence, ...sharedZones, ...redOnlyZones]
+    : calibrationMode === "solo_blue"
+    ? [...blueCalibrationSequence, ...sharedZones, ...blueOnlyZones]
+    : [...requiredZones, ...optionalZones, "ramp_index_red", "ramp_index_blue"];
+  $: zoneCoverage = visibleRequiredZones.map((zoneType) => ({ zoneType, saved: zones.some((z) => z.zoneType === zoneType) }));
   $: selectedZone = zones.find((z) => z._id === selectedZoneId) ?? null;
 
   async function api(path: string, init?: RequestInit) {
@@ -87,6 +107,27 @@
     selectedZoneId = "";
     draftRect = null;
   }
+  function setCalibrationMode(mode: "dual" | "solo_red" | "solo_blue") {
+    calibrationMode = mode;
+    let allowed = new Set(selectableZones);
+    if (!allowed.has(activeZone)) {
+      activeZone = mode === "solo_red" ? "goal_red" : mode === "solo_blue" ? "goal_blue" : "goal_red";
+    }
+    drawMode = "draw";
+    selectedZoneId = "";
+    draftRect = null;
+    draw();
+  }
+  function nextCalibrationZone(zoneType: string) {
+    let sequence = calibrationMode === "solo_red"
+      ? redCalibrationSequence
+      : calibrationMode === "solo_blue"
+      ? blueCalibrationSequence
+      : fullCalibrationSequence;
+    let index = sequence.indexOf(zoneType);
+    if (index < 0) return sequence[0] ?? zoneType;
+    return sequence[(index + 1) % sequence.length] ?? zoneType;
+  }
   async function run(url: string, success: string) {
     busy = true; errorMessage = "";
     try { await api(url, { method: "POST" }); message = success; await load(); }
@@ -108,6 +149,9 @@
       await saveJob();
     }
     draftRect = null; selectedZoneId = ""; await load();
+    if (autoAdvanceZone) {
+      chooseZone(nextCalibrationZone(zoneType));
+    }
   }
   async function updateSelectedZone() {
     if (!selectedZone) return;
@@ -300,22 +344,29 @@
     {:else if activeTab === "Calibrate"}
       <div class="split"><div>
         <h2>Field Calibration</h2><p class="subtle">Choose a zone, then drag directly on the video. Switch to Select to move or resize a saved zone.</p>
+        <div class="mode-row">
+          <strong>Calibration mode</strong>
+          <button class:secondary={calibrationMode !== "dual"} on:click={() => setCalibrationMode("dual")}>Dual</button>
+          <button class:secondary={calibrationMode !== "solo_red"} on:click={() => setCalibrationMode("solo_red")}>Solo red</button>
+          <button class:secondary={calibrationMode !== "solo_blue"} on:click={() => setCalibrationMode("solo_blue")}>Solo blue</button>
+          <label class="inline-check"><input type="checkbox" bind:checked={autoAdvanceZone} />Auto next after save</label>
+        </div>
         <div class="alliance-zone-grid">
-          <section class="zone-lane red-lane"><h3>Red side</h3>
+          {#if calibrationMode !== "solo_blue"}<section class="zone-lane red-lane"><h3>Red side</h3>
             {#each bilateralZoneGroups as group}<button class:zone-saved={zones.some((zone) => zone.zoneType === group.red)} class:zone-active={activeZone === group.red} on:click={() => chooseZone(group.red)}>{group.label}</button>{/each}
-          </section>
-          <section class="zone-lane blue-lane"><h3>Blue side</h3>
+          </section>{/if}
+          {#if calibrationMode !== "solo_red"}<section class="zone-lane blue-lane"><h3>Blue side</h3>
             {#each bilateralZoneGroups as group}<button class:zone-saved={zones.some((zone) => zone.zoneType === group.blue)} class:zone-active={activeZone === group.blue} on:click={() => chooseZone(group.blue)}>{group.label}</button>{/each}
-          </section>
+          </section>{/if}
         </div>
         <div class="goal-confirm">
-          <button class:confirmed={job.confirmedZones.goal_red} on:click={() => confirmGoal("goal_red")}>{job.confirmedZones.goal_red ? "Red goal confirmed" : "Confirm red goal"}</button>
-          <button class:confirmed={job.confirmedZones.goal_blue} on:click={() => confirmGoal("goal_blue")}>{job.confirmedZones.goal_blue ? "Blue goal confirmed" : "Confirm blue goal"}</button>
+          {#if calibrationMode !== "solo_blue"}<button class:confirmed={job.confirmedZones.goal_red} on:click={() => confirmGoal("goal_red")}>{job.confirmedZones.goal_red ? "Red goal confirmed" : "Confirm red goal"}</button>{/if}
+          {#if calibrationMode !== "solo_red"}<button class:confirmed={job.confirmedZones.goal_blue} on:click={() => confirmGoal("goal_blue")}>{job.confirmedZones.goal_blue ? "Blue goal confirmed" : "Confirm blue goal"}</button>{/if}
         </div>
-        <div class="toolbar-row"><select bind:value={activeZone}>{#each [...requiredZones, ...optionalZones, "ramp_index_red", "ramp_index_blue"] as zone}<option>{zone}</option>{/each}</select>
+        <div class="toolbar-row"><select bind:value={activeZone}>{#each selectableZones as zone}<option>{zone}</option>{/each}</select>
         {#if activeZone.startsWith("ramp_index_")}<input type="number" min="1" max="9" bind:value={slotIndex} />{/if}
         <button class:secondary={drawMode !== "draw"} on:click={() => drawMode="draw"}>Draw</button><button class:secondary={drawMode !== "select"} on:click={() => drawMode="select"}>Select</button>
-        <button on:click={saveZone}>Save zone</button><button class="secondary" on:click={updateSelectedZone}>Save edits</button><button class="secondary" on:click={deleteSelectedZone}>Delete selected</button><button class="danger" on:click={clearAllZones}>Clear all</button></div>
+        <button on:click={saveZone}>Save zone{autoAdvanceZone ? " & next" : ""}</button><button class="secondary" on:click={updateSelectedZone}>Save edits</button><button class="secondary" on:click={deleteSelectedZone}>Delete selected</button><button class="danger" on:click={clearAllZones}>Clear all</button></div>
       </div><div class="coverage">{#each zoneCoverage as item}<span class:saved={item.saved}>{item.zoneType}</span>{/each}</div></div>
     {:else if activeTab === "Detect"}
       <h2>Models & Detection</h2><div class="actions"><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-artifact-detection`, "Quick artifact detection started.")}>Quick artifact scan</button><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-frame-artifact-detection`, "Full-frame artifact detection started.")}>Full-frame artifact detection</button><button class="secondary" disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-robot-detection`, "Robot detection started.")}>Run robot detection</button></div>
@@ -351,6 +402,7 @@
   input,select,button{padding:9px;border:1px solid var(--sep-color);border-radius:8px;background:var(--form-bg-color);color:var(--text-color)}button{background:var(--theme-color);color:var(--theme-text-color);cursor:pointer}.secondary{background:var(--form-bg-color);color:var(--text-color)}.danger{background:#6e2631}
   .split{display:grid;grid-template-columns:1.2fr 1fr;gap:16px}.coverage{display:flex;gap:6px;flex-wrap:wrap}.coverage span{padding:6px 8px;border:1px solid var(--sep-color);border-radius:999px;color:var(--secondary-text-color)}.coverage .saved{border-color:#38d98a;color:#38d98a}
   .alliance-zone-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.zone-lane{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:10px;border:1px solid var(--sep-color);border-radius:8px}.zone-lane h3{grid-column:1/-1}.red-lane h3{color:#ff6b7a}.blue-lane h3{color:#62b6ff}.zone-lane button{background:var(--form-bg-color);color:var(--text-color)}.zone-lane .zone-saved{outline:1px solid #38d98a}.zone-lane .zone-active{background:var(--theme-color);color:var(--theme-text-color)}.goal-confirm{display:flex;gap:8px;margin-top:10px}.goal-confirm .confirmed{background:#1d6b4e}
+  .mode-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.inline-check{display:flex;gap:6px;align-items:center;margin-left:auto;color:var(--secondary-text-color)}
   .walkthrough-item{padding:10px 0;border-top:1px solid var(--sep-color)}.walkthrough-item p{margin-top:4px}.walkthrough-item small{color:var(--secondary-text-color)}.review-actions{display:flex;gap:8px}
   dl{display:grid;grid-template-columns:180px 1fr;gap:8px}.three{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.three>div{display:grid;gap:8px}.review{display:grid;grid-template-columns:minmax(0,1.4fr) 320px;gap:16px}.event-row{display:grid;grid-template-columns:1fr auto auto;gap:6px;margin-top:6px}.event-row button:first-child{text-align:left}.event-row small{display:block}.notice,.error{padding:10px;margin-top:12px;border-radius:8px}.notice{background:var(--green-stat-bg-color)}.error{background:var(--red-stat-bg-color)}pre{max-height:480px;overflow:auto;white-space:pre-wrap;font-size:12px}
   @media(max-width:1000px){.workspace,.split,.three,.review,.form-grid,.manual-grid,.alliance-zone-grid{grid-template-columns:1fr}}
