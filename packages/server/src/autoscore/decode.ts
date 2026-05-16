@@ -98,6 +98,12 @@ export async function recalculateDecodeScore(jobId: string) {
   await connectDB();
   let detections = await AutoscoreDetection.find({ jobId }).lean();
   let zones = await AutoscoreCalibrationZone.find({ jobId }).lean();
+  let penalties = await AutoscorePenalty.find({ jobId }).lean();
+  await AutoscoreTimelineEvent.deleteMany({ jobId, eventType: "penalty" });
+  let regeneratedPenaltyEvents = buildPenaltyEvents(penalties);
+  if (regeneratedPenaltyEvents.length) {
+    await AutoscoreTimelineEvent.insertMany(regeneratedPenaltyEvents);
+  }
   let events = await AutoscoreTimelineEvent.find({ jobId }).lean();
   return calculateAndSaveSummary(
     jobId,
