@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import AutoscoreWorkspace from "$lib/components/autoscore/AutoscoreWorkspace.svelte";
   import Card from "$lib/components/Card.svelte";
   import Head from "$lib/components/Head.svelte";
@@ -30,6 +31,7 @@
       if (!response.ok) throw new Error(data.error ?? "Could not start autoscore session.");
       currentJobId = data.job._id;
       localStorage.setItem("decodeAutoscoreSessionId", currentJobId);
+      await goto(`/autoscore/${currentJobId}`);
     } catch (error) { errorMessage = error instanceof Error ? error.message : String(error); }
     finally { busy = false; uploadProgress = 0; }
   }
@@ -58,11 +60,21 @@
   }
   async function waitForUpload(uploadId: string) {
     let worker = uploadUrl.replace(/\/upload-video$/, "");
+    let startedAt = Date.now();
     while (true) {
-      let response = await fetch(`${worker}/uploads/${uploadId}`), data = await response.json();
-      if (data.status === "ready") return data;
-      if (data.status === "failed") throw new Error(data.errorMessage ?? "Video processing failed.");
-      message = "Preparing playback video...";
+      let response = await fetch(`${worker}/uploads/${uploadId}`);
+      let data = await response.json().catch(() => ({}));
+      let status = String(data.status ?? "").toLowerCase();
+
+      if (data.videoUrl || ["ready", "complete", "completed", "done", "success"].includes(status)) return data;
+      if (["failed", "error"].includes(status)) throw new Error(data.errorMessage ?? "Video processing failed.");
+      if (Date.now() - startedAt > 1000 * 60 * 10) {
+        throw new Error("Upload finished but video processing is taking too long. Please try again.");
+      }
+
+      message = uploadProgress >= 100
+        ? "Upload complete. Preparing playback video..."
+        : "Preparing playback video...";
       await new Promise((resolve) => setTimeout(resolve, 1800));
     }
   }
