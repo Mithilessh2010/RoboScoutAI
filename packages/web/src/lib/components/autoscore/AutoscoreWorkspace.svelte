@@ -201,7 +201,13 @@
   function seek(timestamp: number) { video.currentTime = timestamp; currentTime = timestamp; draw(); }
   function phase(t: number) { return t <= 30 ? "AUTO" : t >= 150 ? "ENDGAME" : "TELEOP"; }
   function scoreAt(t: number) { return events.filter((e) => e.timestamp <= t).reduce((out, e) => ({ ...out, [e.alliance]: out[e.alliance] + e.points }), { red: 0, blue: 0 } as any); }
-  function detectionCenter(d: any) { return d.centerX != null && d.centerY != null ? { x: d.centerX, y: d.centerY } : { x: ((d.x ?? 0) + (d.width ?? 0) / 2) / (d.frameWidth || 1), y: ((d.y ?? 0) + (d.height ?? 0) / 2) / (d.frameHeight || 1) }; }
+  function detectionCenter(d: any) {
+    if (d.centerX != null && d.centerY != null && d.centerX <= 1 && d.centerY <= 1) return { x: d.centerX, y: d.centerY };
+    return {
+      x: ((d.x ?? 0) + (d.width ?? 0) / 2) / (d.frameWidth || 1),
+      y: ((d.y ?? 0) + (d.height ?? 0) / 2) / (d.frameHeight || 1),
+    };
+  }
   function countInZone(zoneType: string) { let zone = zones.find((z) => z.zoneType === zoneType); return zone ? visibleArtifacts.filter((d) => pointInPolygon(detectionCenter(d), zone.coordinates)).length : null; }
   function rectPoints(rect: any) { let x1 = Math.min(rect.x1, rect.x2), x2 = Math.max(rect.x1, rect.x2), y1 = Math.min(rect.y1, rect.y2), y2 = Math.max(rect.y1, rect.y2); return [{ x: x1, y: y1 }, { x: x2, y: y1 }, { x: x2, y: y2 }, { x: x1, y: y2 }]; }
   function bounds(points: any[]) { let xs = points.map((p) => p.x), ys = points.map((p) => p.y); return { x1: Math.min(...xs), x2: Math.max(...xs), y1: Math.min(...ys), y2: Math.max(...ys) }; }
