@@ -233,6 +233,22 @@
     let url = URL.createObjectURL(new Blob([text], { type }));
     let link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url);
   }
+  async function downloadHighlights() {
+    busy = true; errorMessage = "";
+    try {
+      let response = await fetch("https://roboscoutai-autoscore-worker.fly.dev/export-highlights", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jobId, videoUrl: job.videoUrl }),
+      });
+      if (!response.ok) {
+        let data = await response.json().catch(() => ({}));
+        throw new Error(data.detail ?? data.error ?? "Could not export highlights.");
+      }
+      let url = URL.createObjectURL(await response.blob());
+      let link = document.createElement("a"); link.href = url; link.download = `decode-highlights-${jobId}.zip`; link.click(); URL.revokeObjectURL(url);
+    } catch (error) { errorMessage = error instanceof Error ? error.message : String(error); }
+    finally { busy = false; }
+  }
   onMount(() => load().catch((error) => errorMessage = error instanceof Error ? error.message : String(error)));
 </script>
 
@@ -310,7 +326,7 @@
     {:else if activeTab === "Review"}
       <div class="review"><div><h2>Timeline</h2>{#each events as event}<div class="event-row"><button on:click={() => seek(event.timestamp)}>{fmt(event.timestamp)} {event.alliance} {event.eventType} {event.points ? `+${event.points}` : ""}<small>{Math.round(event.confidence*100)}% {event.reason}</small></button><button class="secondary" on:click={() => editEvent(event)}>Edit</button><button class="secondary" on:click={() => deleteEvent(event._id)}>Delete</button></div>{/each}</div>
       <div><h2>Scoring Walkthrough</h2>{#each walkthrough?.items ?? [] as item}<article class="walkthrough-item"><b>{fmt(item.timestamp)} {item.alliance} {item.eventType} {item.points ? `+${item.points}` : ""}</b><p>{item.explanation}</p><small>{Math.round(item.confidence*100)}% confidence{item.reviewNeeded ? " · review suggested" : ""}</small></article>{/each}</div></div>
-      <div class="review-actions"><button on:click={() => downloadText("decode-walkthrough.md", walkthrough?.markdown ?? "")}>Download walkthrough</button><button class="secondary" on:click={() => downloadText("decode-score.json", JSON.stringify({ summary, events, rampCounts, warnings: summary?.warnings ?? [] }, null, 2), "application/json")}>Download scoring JSON</button></div>
+      <div class="review-actions"><button on:click={() => downloadText("decode-walkthrough.md", walkthrough?.markdown ?? "")}>Download walkthrough</button><button class="secondary" on:click={() => downloadText("decode-score.json", JSON.stringify({ summary, events, rampCounts, warnings: summary?.warnings ?? [] }, null, 2), "application/json")}>Download scoring JSON</button><button class="secondary" disabled={busy} on:click={downloadHighlights}>Download annotated event frames</button></div>
       <div><h2>Add Manual Event</h2><select bind:value={manualEvent.alliance}><option>red</option><option>blue</option></select><select bind:value={manualEvent.eventType}><option>classified</option><option>overflow</option><option>depot</option><option>manual_adjustment</option></select><input type="number" bind:value={manualEvent.points} /><input bind:value={manualEvent.reason} /><button on:click={addManualEvent}>Add at current time</button></div>
     {:else}
       <h2>Results JSON</h2><pre>{JSON.stringify({ summary, gateEvents, penalties, rampCounts: rampCounts.slice(-20), events }, null, 2)}</pre>

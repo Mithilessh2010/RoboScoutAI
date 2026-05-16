@@ -4,15 +4,18 @@ import re
 import shutil
 import subprocess
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import cv2
 import requests
 from bson import ObjectId
 from fastapi import BackgroundTasks, FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 from gridfs import GridFSBucket
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -59,6 +62,11 @@ class RunRequest(BaseModel):
 class CreateChunkedUploadRequest(BaseModel):
     filename: str
     totalChunks: int
+
+
+class ExportHighlightsRequest(BaseModel):
+    jobId: str
+    videoUrl: str | None = None
 
 
 def utcnow() -> datetime:
@@ -142,6 +150,35 @@ def transcode_video(source_path: Path, target_path: Path) -> None:
         str(target_path),
     ]
     subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+def zone_color(zone_type: str) -> tuple[int, int, int]:
+    if "gate" in zone_type:
+        return (102, 209, 255)
+    if "red" in zone_type:
+        return (112, 107, 255)
+    if "blue" in zone_type:
+        return (255, 182, 98)
+    return (220, 220, 220)
+
+
+def draw_zone(image, zone):
+    height, width = image.shape[:2]
+    points = [(int(point["x"] * width), int(point["y"] * height)) for point in zone.get("coordinates", [])]
+    if len(points) < 2:
+        return
+    color = zone_color(zone["zoneType"])
+    import numpy as np
+    cv2.polylines(image, [np.array(points)], True, color, 2)
+    cv2.putText(image, zone["zoneType"], points[0], cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
+
+
+def draw_db_detection(image, detection):
+    color = (57, 217, 138) if detection["className"] == "artifact_green" else (184, 107, 255)
+    x1, y1 = int(detection["x"]), int(detection["y"])
+    x2, y2 = int(detection["x"] + detection["width"]), int(detection["y"] + detection["height"])
+    cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+    cv2.putText(image, f'{detection["className"]} {detection["confidence"]:.2f}', (x1, max(18, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
 
 
 def iter_gridfs_file(stream, chunk_size: int = 1024 * 1024, remaining: int | None = None):
@@ -628,3 +665,51 @@ def run_artifact_detection(
     check_secret(authorization)
     background_tasks.add_task(run_job, request)
     return {"started": True, "jobId": request.jobId}
+
+
+@app.post("/export-highlights")
+def export_highlights(
+    request: ExportHighlightsRequest,
+    authorization: str | None = Header(default=None),
+) -> FileResponse:
+    check_secret(authorization)
+    db = database()
+    job_id = ObjectId(request.jobId)
+    job = db.autoscorejobs.find_one({"_id": job_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="Autoscore job not found.")
+    video_url = request.videoUrl or job.get("videoUrl")
+    if not video_url:
+        raise HTTPException(status_code=400, detail="Autoscore video URL is missing.")
+    events = list(db.autoscoretimelineevents.find({"jobId": job_id}).sort("timestamp", 1))
+    if not events:
+        raise HTTPException(status_code=409, detail="Run scoring before exporting highlights.")
+    zones = list(db.autoscorecalibrationzones.find({"jobId": job_id}))
+    detections = list(db.autoscoredetections.find({"jobId": job_id}))
+    source_path = download_video(video_url, f"export-{request.jobId}")
+    export_dir = PREDICTIONS_DIR / f"{request.jobId}-highlights"
+    shutil.rmtree(export_dir, ignore_errors=True)
+    export_dir.mkdir(parents=True, exist_ok=True)
+    cap = cv2.VideoCapture(str(source_path))
+    if not cap.isOpened():
+        raise HTTPException(status_code=500, detail="Could not open video for export.")
+    for index, event in enumerate(events):
+        cap.set(cv2.CAP_PROP_POS_MSEC, float(event["timestamp"]) * 1000)
+        ok, frame = cap.read()
+        if not ok:
+            continue
+        for zone in zones:
+            draw_zone(frame, zone)
+        nearby = [d for d in detections if abs(float(d["timestamp"]) - float(event["timestamp"])) <= 0.08 and d["className"] != "robot"]
+        for detection in nearby:
+            draw_db_detection(frame, detection)
+        label = f'{event["alliance"]} {event["eventType"]} {event.get("points", 0):+d}'
+        cv2.rectangle(frame, (16, 16), (520, 66), (12, 12, 12), -1)
+        cv2.putText(frame, label, (28, 48), cv2.FONT_HERSHEY_SIMPLEX, 0.85, (255, 255, 255), 2)
+        cv2.imwrite(str(export_dir / f"{index + 1:03d}_{event['timestamp']:.1f}_{event['eventType']}.jpg"), frame)
+    cap.release()
+    zip_path = export_dir.with_suffix(".zip")
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for image_path in sorted(export_dir.glob("*.jpg")):
+            archive.write(image_path, image_path.name)
+    return FileResponse(zip_path, media_type="application/zip", filename=f"decode-highlights-{request.jobId}.zip")
