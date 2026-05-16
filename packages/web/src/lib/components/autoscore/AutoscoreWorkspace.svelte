@@ -116,13 +116,14 @@
     beginStatus("preparing_playback");
     message = "Upload complete. Preparing playback video...";
     let timedOut = false;
+    const PREP_TIMEOUT_MS = 120000; // increased from 30s to 120s to allow longer processing
     let timeout = setTimeout(() => {
       timedOut = true;
-      failStatus("preparing_playback", "Playback preparation timed out after 30 seconds.");
-      errorMessage = "Playback preparation timed out after 30 seconds.";
+      failStatus("preparing_playback", `Playback preparation timed out after ${PREP_TIMEOUT_MS / 1000} seconds.`);
+      errorMessage = `Playback preparation timed out after ${PREP_TIMEOUT_MS / 1000} seconds.`;
       if (uploadPoller) clearInterval(uploadPoller);
       uploadPoller = null;
-    }, 30000);
+    }, PREP_TIMEOUT_MS);
     uploadPoller = setInterval(async () => {
       if (timedOut) return;
       try {
