@@ -9,11 +9,14 @@
   const uploadUrl = "https://roboscoutai-autoscore-worker.fly.dev/upload-video";
   let currentJobId = "";
   let busy = false, errorMessage = "", message = "", uploadProgress = 0;
+  let submitInFlight = false;
   let videoFile: File | null = null;
   let uploadStartedAt = 0, uploadDurationMs: number | null = null;
   let form = { videoName: "", videoUrl: "", redTeam1: "", redTeam2: "", blueTeam1: "", blueTeam2: "", motif: "unknown" };
 
   async function beginSession() {
+    if (submitInFlight) return;
+    submitInFlight = true;
     busy = true; errorMessage = ""; message = "";
     try {
       let videoUrl = form.videoUrl.trim();
@@ -36,7 +39,7 @@
       localStorage.setItem("decodeAutoscoreSessionId", currentJobId);
       message = "Upload complete. Preparing playback video...";
     } catch (error) { errorMessage = error instanceof Error ? error.message : String(error); }
-    finally { busy = false; uploadProgress = 0; }
+    finally { busy = false; uploadProgress = 0; submitInFlight = false; }
   }
   function resetSession() { currentJobId = ""; localStorage.removeItem("decodeAutoscoreSessionId"); }
   async function uploadChunked(file: File) {
@@ -101,7 +104,7 @@
         <select bind:value={form.motif}><option value="unknown">Motif unknown</option><option>GPP</option><option>PGP</option><option>PPG</option></select>
         <input bind:value={form.redTeam1} placeholder="Red team 1 optional" /><input bind:value={form.redTeam2} placeholder="Red team 2 optional" />
         <input bind:value={form.blueTeam1} placeholder="Blue team 1 optional" /><input bind:value={form.blueTeam2} placeholder="Blue team 2 optional" />
-        <button disabled={busy}>Upload Match Video</button>
+        <button type="submit" disabled={busy} aria-busy={busy}>Upload Match Video</button>
       </form>
     </section>
     {#if uploadProgress > 0}<p class="notice">Uploading {uploadProgress.toFixed(0)}%</p>{/if}
