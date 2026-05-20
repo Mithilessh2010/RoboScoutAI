@@ -4,6 +4,8 @@ import argparse
 from pathlib import Path
 import json
 import cv2
+import subprocess
+import tempfile
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
@@ -40,6 +42,8 @@ def draw_detections(image, detections):
         "artifact_green": (57, 217, 138),
         "artifact_purple": (184, 107, 255),
         "robot": (255, 196, 64),
+        "scoring_basket_red": (70, 70, 255),
+        "scoring_basket_blue": (255, 120, 70),
     }
     for detection in detections:
         x1, y1, x2, y2 = [int(v) for v in detection["bbox_xyxy"]]
@@ -82,7 +86,36 @@ def predict_image(models, source, out_dir, model_paths, conf, save_annotated):
     print("Saved predictions to", out_file)
 
 
-def predict_video(models, source, out_dir, model_paths, conf, stride, save_annotated, save_video):
+def _transcode_video_for_opencv(source):
+    temp_dir = tempfile.TemporaryDirectory(prefix="roboscoutai-video-")
+    transcoded = Path(temp_dir.name) / f"{source.stem}.opencv.mp4"
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(source),
+        "-map",
+        "0:v:0",
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv420p",
+        str(transcoded),
+    ]
+    subprocess.run(cmd, check=True)
+    return temp_dir, transcoded
+
+
+def predict_video(models, source, out_dir, model_paths, conf, stride, save_annotated, save_video, fallback_used=False, display_source=None):
+    display_source = display_source or source
     cap = cv2.VideoCapture(str(source))
     if not cap.isOpened():
         raise SystemExit(f"Could not open video: {source}")
@@ -124,20 +157,50 @@ def predict_video(models, source, out_dir, model_paths, conf, stride, save_annot
                 writer.write(annotated)
         frame_idx += 1
 
-    out_file = out_dir / f"{source.stem}.json"
+    incomplete = total_frames > 0 and frame_idx < max(0, total_frames - max(2, stride))
+    cap.release()
+    if writer is not None:
+        writer.release()
+    if incomplete and not fallback_used:
+        print(
+            f"OpenCV stopped early at frame {frame_idx}/{total_frames}; "
+            "transcoding to H.264 MP4 and retrying so partial predictions are not scored.",
+            flush=True,
+        )
+        temp_dir, transcoded = _transcode_video_for_opencv(display_source)
+        try:
+            return predict_video(
+                models,
+                transcoded,
+                out_dir,
+                model_paths,
+                conf,
+                stride,
+                save_annotated,
+                save_video,
+                fallback_used=True,
+                display_source=display_source,
+            )
+        finally:
+            temp_dir.cleanup()
+    if incomplete:
+        raise SystemExit(
+            f"Video read incomplete after fallback: processed through frame {frame_idx} "
+            f"of {total_frames}. Not writing partial predictions."
+        )
+
+    out_file = out_dir / f"{display_source.stem}.json"
     out_file.write_text(json.dumps({
-        "source": str(source),
+        "source": str(display_source),
         "source_type": "video",
         "models": model_manifest(models, model_paths),
         "width": width,
         "height": height,
         "fps": fps,
         "frame_stride": max(1, stride),
+        "transcoded_for_opencv": fallback_used,
         "detections": results,
     }, indent=2))
-    cap.release()
-    if writer is not None:
-        writer.release()
     print("Saved predictions to", out_file)
 
 
@@ -146,7 +209,8 @@ def main():
     p.add_argument('source', help='Image or video to run artifact detection on')
     p.add_argument('--model', default='services/video-processing/models/decode/best.pt')
     p.add_argument('--robot-model', default=None, help='Optional robot detector weights to run beside the artifact model')
-    p.add_argument('--detector-mode', choices=['artifact', 'robot', 'both'], default='both')
+    p.add_argument('--structure-model', default=None, help='Optional scoring-structure detector weights')
+    p.add_argument('--detector-mode', choices=['artifact', 'robot', 'structure', 'both', 'all'], default='both')
     p.add_argument('--out', default='decode-training/predictions')
     p.add_argument('--conf', type=float, default=0.25)
     p.add_argument('--stride', type=int, default=1, help='For videos, run every Nth frame')
@@ -160,6 +224,9 @@ def main():
     robot_model_path = Path(args.robot_model) if args.robot_model else None
     if robot_model_path and not robot_model_path.exists():
         raise SystemExit(f"Missing robot model: {robot_model_path}. Train or copy robot weights first.")
+    structure_model_path = Path(args.structure_model) if args.structure_model else None
+    if structure_model_path and not structure_model_path.exists():
+        raise SystemExit(f"Missing scoring-structure model: {structure_model_path}. Train or copy structure weights first.")
     source = Path(args.source)
     if not source.exists():
         raise SystemExit(f"Missing source file: {source}")
@@ -172,12 +239,15 @@ def main():
 
     models = []
     model_paths = {}
-    if args.detector_mode in {"artifact", "both"}:
+    if args.detector_mode in {"artifact", "both", "all"}:
         models.append(("artifact", YOLO(str(model_path))))
         model_paths["artifact"] = model_path
-    if args.detector_mode in {"robot", "both"} and robot_model_path:
+    if args.detector_mode in {"robot", "both", "all"} and robot_model_path:
         models.append(("robot", YOLO(str(robot_model_path))))
         model_paths["robot"] = robot_model_path
+    if args.detector_mode in {"structure", "all"} and structure_model_path:
+        models.append(("structure", YOLO(str(structure_model_path))))
+        model_paths["structure"] = structure_model_path
     if not models:
         raise SystemExit("No models selected for detection.")
     outp = Path(args.out)

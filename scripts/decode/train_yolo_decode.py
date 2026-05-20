@@ -44,7 +44,7 @@ def main():
     p.add_argument('--name', default='decode-yolo')
     p.add_argument(
         '--expected',
-        choices=['auto', 'phase1-artifacts', 'phase2-robot', 'full-decode'],
+        choices=['auto', 'phase1-artifacts', 'phase2-robot', 'scoring-structures', 'full-decode'],
         default='auto',
         help='Expected dataset class set.',
     )

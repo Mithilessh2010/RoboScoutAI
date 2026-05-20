@@ -30,6 +30,11 @@ ROBOT_NAMES = [
     "robot",
 ]
 
+SCORING_STRUCTURE_NAMES = [
+    "scoring_basket_blue",
+    "scoring_basket_red",
+]
+
 
 @dataclass
 class ValidationResult:
@@ -53,6 +58,7 @@ def validate(data_yaml: Path, allow_empty: bool = False, expected: str = "auto")
     expected_options = {
         "phase1-artifacts": PHASE1_ARTIFACT_NAMES,
         "phase2-robot": ROBOT_NAMES,
+        "scoring-structures": SCORING_STRUCTURE_NAMES,
         "full-decode": EXPECTED_NAMES,
     }
     if expected == "auto":
@@ -61,6 +67,7 @@ def validate(data_yaml: Path, allow_empty: bool = False, expected: str = "auto")
             raise SystemExit(
                 "Expected Phase 1 artifact classes "
                 f"{PHASE1_ARTIFACT_NAMES}, Phase 2 robot classes {ROBOT_NAMES}, "
+                f"scoring-structure classes {SCORING_STRUCTURE_NAMES}, "
                 f"or full DECODE classes; got nc={nc}, names={names}"
             )
     else:
@@ -115,18 +122,22 @@ def validate(data_yaml: Path, allow_empty: bool = False, expected: str = "auto")
                 parts = line.split()
                 if not parts:
                     continue
-                if len(parts) != 5:
-                    raise SystemExit(f"Invalid label line in {lbl}: {line}")
                 try:
                     cid = int(parts[0])
-                    vals = list(map(float, parts[1:5]))
+                    vals = list(map(float, parts[1:]))
                 except ValueError as exc:
                     raise SystemExit(f"Non-numeric label value in {lbl}: {line}") from exc
                 if cid < 0 or cid >= nc:
                     raise SystemExit(f"Invalid class id {cid} in {lbl}")
-                x, y, w, h = vals
-                if any(v < 0 or v > 1 for v in vals) or w <= 0 or h <= 0:
-                    raise SystemExit(f"BBox out of range or empty in {lbl}: {line}")
+                if len(vals) == 4:
+                    x, y, w, h = vals
+                    if any(v < 0 or v > 1 for v in vals) or w <= 0 or h <= 0:
+                        raise SystemExit(f"BBox out of range or empty in {lbl}: {line}")
+                    continue
+                if len(vals) < 6 or len(vals) % 2:
+                    raise SystemExit(f"Invalid bbox/segmentation label line in {lbl}: {line}")
+                if any(v < 0 or v > 1 for v in vals):
+                    raise SystemExit(f"Segmentation point out of range in {lbl}: {line}")
 
     if result.images == 0:
         print("YOLO dataset scaffold is present, but no labeled split images were found.")
@@ -145,7 +156,7 @@ def main():
     p.add_argument("--allow-empty", action="store_true", help="Only validate scaffold/classes; do not require labeled splits.")
     p.add_argument(
         "--expected",
-        choices=["auto", "phase1-artifacts", "phase2-robot", "full-decode"],
+        choices=["auto", "phase1-artifacts", "phase2-robot", "scoring-structures", "full-decode"],
         default="auto",
         help="Expected DECODE class set.",
     )
