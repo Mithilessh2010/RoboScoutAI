@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import uuid
 import zipfile
@@ -23,6 +24,13 @@ from pymongo import MongoClient
 
 
 ROOT = Path(__file__).resolve().parents[2]
+LOCAL_SCRIPTS_DIR = ROOT / "scripts/local"
+if str(LOCAL_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(LOCAL_SCRIPTS_DIR))
+
+from autoscore_algorithm import score_video
+from video_stabilization import stabilize_detection_rows
+
 MODEL_PATH = ROOT / "services/video-processing/models/decode/best.pt"
 ROBOT_MODEL_PATH = ROOT / "services/video-processing/models/decode/robot/best.pt"
 PREDICT_SCRIPT = ROOT / "scripts/decode/predict_video_decode.py"
@@ -68,6 +76,12 @@ class CreateChunkedUploadRequest(BaseModel):
 class ExportHighlightsRequest(BaseModel):
     jobId: str
     videoUrl: str | None = None
+
+
+class LocalScoreRequest(BaseModel):
+    jobId: str
+    videoUrl: str | None = None
+    conf: float = DEFAULT_CONF
 
 
 def utcnow() -> datetime:
@@ -236,6 +250,240 @@ def flatten_detections(job_object_id: ObjectId, prediction: dict[str, Any]) -> l
                 }
             )
     return rows
+
+
+def phase_at(timestamp: float) -> str:
+    if timestamp <= AUTO_SECONDS:
+        return "AUTO"
+    if timestamp >= MATCH_SECONDS:
+        return "ENDGAME"
+    return "TELEOP"
+
+
+def serialize_for_scorer(row: dict[str, Any]) -> dict[str, Any]:
+    copied = dict(row)
+    if copied.get("_id") is not None:
+        copied["_id"] = str(copied["_id"])
+    if copied.get("jobId") is not None:
+        copied["jobId"] = str(copied["jobId"])
+    return copied
+
+
+def zone_for_basket_scorer(zone: dict[str, Any]) -> dict[str, Any]:
+    copied = dict(zone)
+    if copied.get("_id") is not None:
+        copied["_id"] = str(copied["_id"])
+    if copied.get("jobId") is not None:
+        copied["jobId"] = str(copied["jobId"])
+    return copied
+
+
+def score_zone_types(zone: dict[str, Any]) -> bool:
+    zone_type = str(zone.get("zoneType", ""))
+    return zone_type in {
+        "basket_red",
+        "basket_blue",
+        "structure_red",
+        "structure_blue",
+        "field_boundary",
+    }
+
+
+def confidence_from_events(events: list[dict[str, Any]]) -> float:
+    if not events:
+        return 0.0
+    # The local scorer currently emits deterministic made-ball events, not a
+    # calibrated ML probability. Keep it high enough for review UI while still
+    # making clear these are estimates.
+    return 0.85
+
+
+def update_summary_from_local_score(
+    db,
+    job_object_id: ObjectId,
+    result: dict[str, Any],
+    detection_rows: list[dict[str, Any]],
+    warnings: list[str],
+) -> dict[str, Any]:
+    confidences = [float(row.get("confidence", 0.0) or 0.0) for row in detection_rows]
+    red_score = int(result.get("red_score", 0) or 0)
+    blue_score = int(result.get("blue_score", 0) or 0)
+    summary = {
+        "jobId": job_object_id,
+        "redAutoScore": 0,
+        "blueAutoScore": 0,
+        "redTeleopScore": red_score,
+        "blueTeleopScore": blue_score,
+        "redArtifactScore": red_score,
+        "blueArtifactScore": blue_score,
+        "redClassifiedCount": red_score,
+        "blueClassifiedCount": blue_score,
+        "redOverflowCount": 0,
+        "blueOverflowCount": 0,
+        "redPatternScore": 0,
+        "bluePatternScore": 0,
+        "redDepotScore": 0,
+        "blueDepotScore": 0,
+        "redBaseScore": 0,
+        "blueBaseScore": 0,
+        "redPenaltyCredits": 0,
+        "bluePenaltyCredits": 0,
+        "estimatedRedScore": red_score,
+        "estimatedBlueScore": blue_score,
+        "redRP": 0,
+        "blueRP": 0,
+        "winner": "red" if red_score > blue_score else "blue" if blue_score > red_score else "tie",
+        "totalDetections": len(detection_rows),
+        "artifactGreenCount": sum(1 for row in detection_rows if row.get("className") == "artifact_green"),
+        "artifactPurpleCount": sum(1 for row in detection_rows if row.get("className") == "artifact_purple"),
+        "robotDetectionCount": sum(1 for row in detection_rows if row.get("className") == "robot"),
+        "averageConfidence": sum(confidences) / len(confidences) if confidences else 0,
+        "maxConfidence": max(confidences) if confidences else 0,
+        "warnings": warnings,
+        "reviewed": False,
+        "updatedAt": utcnow(),
+    }
+    db.autoscoresummaries.update_one(
+        {"jobId": job_object_id},
+        {"$set": summary, "$setOnInsert": {"createdAt": utcnow()}},
+        upsert=True,
+    )
+    return summary
+
+
+def run_local_basket_score_sync(request: LocalScoreRequest) -> dict[str, Any]:
+    db = database()
+    job_object_id = ObjectId(request.jobId)
+    job = db.autoscorejobs.find_one({"_id": job_object_id})
+    if not job:
+        raise HTTPException(status_code=404, detail="Autoscore job not found.")
+
+    db.autoscorejobs.update_one(
+        {"_id": job_object_id},
+        {
+            "$set": {
+                "status": "scoring",
+                "phase": "decode_autoscore",
+                "errorMessage": None,
+                "updatedAt": utcnow(),
+            }
+        },
+    )
+
+    detections = [
+        serialize_for_scorer(row)
+        for row in db.autoscoredetections.find(
+            {"jobId": job_object_id, "detectorType": {"$in": ["artifact", None]}}
+        ).sort([("frameNumber", 1), ("confidence", -1)])
+    ]
+    zones = [zone_for_basket_scorer(zone) for zone in db.autoscorecalibrationzones.find({"jobId": job_object_id})]
+    scorer_zones = [zone for zone in zones if score_zone_types(zone)]
+    warnings: list[str] = []
+
+    if not detections:
+        raise HTTPException(status_code=409, detail="Run artifact detection before scoring.")
+    if not any(zone.get("zoneType") in {"basket_red", "basket_blue"} for zone in scorer_zones):
+        raise HTTPException(status_code=409, detail="Draw and save at least one Red/Blue Basket zone before scoring.")
+    if not any(zone.get("zoneType") == "field_boundary" for zone in scorer_zones):
+        warnings.append("Camera stabilization skipped because no Field Boundary zone is saved.")
+
+    source_path: Path | None = None
+    video_url = request.videoUrl or job.get("videoUrl")
+    try:
+        if video_url:
+            source_path = download_video(video_url, f"score-{request.jobId}")
+            detections, stabilization_debug = stabilize_detection_rows(source_path, detections, scorer_zones)
+        else:
+            stabilization_debug = {"enabled": False, "reason": "videoUrl missing"}
+            warnings.append("Camera stabilization skipped because the job has no video URL.")
+
+        if not stabilization_debug.get("enabled"):
+            reason = stabilization_debug.get("reason")
+            if reason and "Field Boundary" not in " ".join(warnings):
+                warnings.append(f"Camera stabilization skipped: {reason}.")
+
+        result = score_video(
+            request.jobId,
+            detections,
+            scorer_zones,
+            persistence_frames=2,
+            confidence_threshold=request.conf,
+            max_distance=0.15,
+        )
+        debug = result.get("debug", {})
+        if debug:
+            warnings.extend(str(note) for note in debug.get("notes", []) if "suppressed" in str(note))
+
+        db.autoscoretimelineevents.delete_many({"jobId": job_object_id, "manualOverride": {"$ne": True}})
+        now = utcnow()
+        confidence = confidence_from_events(result.get("events", []))
+        timeline_events = []
+        for event in result.get("events", []):
+            timestamp = float(event.get("timestamp", 0.0) or 0.0)
+            alliance = event.get("alliance")
+            if alliance not in {"red", "blue"}:
+                continue
+            timeline_events.append(
+                {
+                    "jobId": job_object_id,
+                    "timestamp": timestamp,
+                    "frameNumber": int(event.get("frame_number", 0) or 0),
+                    "phase": phase_at(timestamp),
+                    "eventType": "classified",
+                    "alliance": alliance,
+                    "teamNumber": None,
+                    "artifactColor": event.get("ball_color") if event.get("ball_color") in {"green", "purple"} else None,
+                    "zoneType": event.get("basket_type"),
+                    "points": 1,
+                    "confidence": confidence,
+                    "reason": event.get("description") or "Ball was tracked into the scoring basket and counted once.",
+                    "relatedDetectionIds": [],
+                    "relatedTrackId": str(event.get("ball_id")) if event.get("ball_id") is not None else None,
+                    "manualOverride": False,
+                    "reviewed": False,
+                    "createdAt": now,
+                    "updatedAt": now,
+                }
+            )
+        if timeline_events:
+            db.autoscoretimelineevents.insert_many(timeline_events)
+
+        summary = update_summary_from_local_score(db, job_object_id, result, detections, warnings)
+        db.autoscorejobs.update_one(
+            {"_id": job_object_id},
+            {
+                "$set": {
+                    "status": "review_needed" if warnings else "complete",
+                    "phase": "decode_autoscore",
+                    "errorMessage": None,
+                    "progress": 100,
+                    "localScoringDebug": {
+                        "method": result.get("scoring_method"),
+                        "debug": debug,
+                        "stabilization": stabilization_debug,
+                    },
+                    "updatedAt": utcnow(),
+                }
+            },
+        )
+        return {
+            "eventsCreated": len(timeline_events),
+            "summary": {**summary, "jobId": str(summary["jobId"])},
+            "warnings": warnings,
+            "debug": debug,
+            "stabilization": stabilization_debug,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        db.autoscorejobs.update_one(
+            {"_id": job_object_id},
+            {"$set": {"status": "failed", "errorMessage": str(exc), "updatedAt": utcnow()}},
+        )
+        raise
+    finally:
+        if source_path is not None:
+            source_path.unlink(missing_ok=True)
 
 
 def run_job(request: RunRequest) -> None:
@@ -670,6 +918,15 @@ def run_artifact_detection(
     check_secret(authorization)
     start_background_thread(run_job, request)
     return {"started": True, "jobId": request.jobId}
+
+
+@app.post("/run-local-basket-scoring")
+def run_local_basket_scoring(
+    request: LocalScoreRequest,
+    authorization: str | None = Header(default=None),
+) -> dict[str, Any]:
+    check_secret(authorization)
+    return run_local_basket_score_sync(request)
 
 
 @app.post("/export-highlights")

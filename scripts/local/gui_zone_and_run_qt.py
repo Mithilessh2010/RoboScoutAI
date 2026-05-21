@@ -28,6 +28,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 # Add parent directories to path for local imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from autoscore_algorithm import score_video
+from video_stabilization import stabilize_detection_rows
 
 
 class VideoCanvas(QtWidgets.QLabel):
@@ -554,6 +555,25 @@ class ZoneDrawerWindow(QtWidgets.QWidget):
         stem = Path(path).stem if path else 'untitled_video'
         return re.sub(r'[^A-Za-z0-9._-]+', '_', stem).strip('_') or 'untitled_video'
 
+    def _local_zone_path_candidates(self):
+        root = Path(__file__).resolve().parents[2]
+        directory = root / 'runs' / 'local_zone_cache'
+        directory.mkdir(parents=True, exist_ok=True)
+        path = self.video_edit.text().strip()
+        stem = Path(path).stem if path else 'untitled_video'
+        candidates = [self._safe_video_cache_name()]
+        stripped = re.sub(r'\b(red|blue)\s+\d+\s*(balls?)?\b', '', stem, flags=re.IGNORECASE)
+        stripped = re.sub(r'\s+', ' ', stripped).strip()
+        if stripped:
+            candidates.append(re.sub(r'[^A-Za-z0-9._-]+', '_', stripped).strip('_'))
+        first_word = re.split(r'\s+', stem.strip())[0] if stem.strip() else ''
+        if first_word:
+            candidates.append(re.sub(r'[^A-Za-z0-9._-]+', '_', first_word).strip('_'))
+        return [
+            directory / f'{candidate}.zones.json'
+            for candidate in dict.fromkeys(candidate for candidate in candidates if candidate)
+        ]
+
     def _local_zone_path(self):
         root = Path(__file__).resolve().parents[2]
         directory = root / 'runs' / 'local_zone_cache'
@@ -605,7 +625,7 @@ class ZoneDrawerWindow(QtWidgets.QWidget):
         return zone_path
 
     def _load_zones_from_local_cache(self, silent=False):
-        zone_path = self._local_zone_path()
+        zone_path = next((path for path in self._local_zone_path_candidates() if path.exists()), self._local_zone_path())
         pixmap = self.canvas.pix
         if not pixmap or not zone_path.exists():
             return False
@@ -774,6 +794,8 @@ class ZoneDrawerWindow(QtWidgets.QWidget):
                 f"[UI] Loaded {len(rows)} fresh rows from prediction JSON "
                 f"({len(artifact_rows)} artifact detections). Running raw canvas scoring..."
             )
+            rows, stabilization_debug = stabilize_detection_rows(path, rows, active_zones)
+            print(f"[UI] Camera stabilization: {json.dumps(stabilization_debug, indent=2)}")
             scoring_result = score_video(
                 Path(path).stem,
                 rows,

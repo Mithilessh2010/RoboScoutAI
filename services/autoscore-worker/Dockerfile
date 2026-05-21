@@ -13,6 +13,8 @@ COPY services/autoscore-worker/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY scripts/decode/predict_video_decode.py scripts/decode/predict_video_decode.py
+COPY scripts/local/autoscore_algorithm.py scripts/local/autoscore_algorithm.py
+COPY scripts/local/video_stabilization.py scripts/local/video_stabilization.py
 COPY services/video-processing/models/decode/best.pt services/video-processing/models/decode/best.pt
 COPY services/video-processing/models/decode/robot/best.pt services/video-processing/models/decode/robot/best.pt
 COPY services/autoscore-worker/app.py services/autoscore-worker/app.py

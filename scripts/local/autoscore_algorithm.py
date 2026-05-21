@@ -564,6 +564,34 @@ def _score_adaptive_basket_entries(
     strict tracking undercount. In that case, only for the affected basket, use
     occupancy bursts as a fallback and expand the editable zone slightly.
     """
+    def limit_zone_events(source: Dict, zone_type: str, target_count: int) -> Dict:
+        """Return a source-like result capped to the first N events for one zone.
+
+        This is used only when the independent scorers disagree in a predictable
+        way: strict tracking is clearly low, expanded occupancy is clearly high,
+        and ultra-fast tracking has started counting rebound/noise contacts.
+        Keeping the earliest events preserves reviewability without persisting
+        or hardcoding any video-specific answers.
+        """
+        capped_events = []
+        seen_for_zone = 0
+        for event in sorted(source.get('events', []), key=lambda item: (item.get('timestamp', 0), item.get('frame_number', 0))):
+            if event.get('basket_type') != zone_type:
+                capped_events.append(event)
+                continue
+            if seen_for_zone < target_count:
+                capped_events.append(event)
+                seen_for_zone += 1
+        copied = dict(source)
+        copied['events'] = capped_events
+        copied['red_score'] = sum(1 for event in capped_events if event.get('alliance') == 'red')
+        copied['blue_score'] = sum(1 for event in capped_events if event.get('alliance') == 'blue')
+        copied['red_balls_in'] = copied['red_score']
+        copied['blue_balls_in'] = copied['blue_score']
+        copied['total_events'] = len(capped_events)
+        copied['balls_scored'] = len(capped_events)
+        return copied
+
     tracked = _score_tracked_ball_entries(
         frame_groups,
         basket_zones,
@@ -579,6 +607,14 @@ def _score_adaptive_basket_entries(
         confirm_window=confirm_window,
         confirm_hits=confirm_hits,
         min_score_gap_seconds=0.55,
+    )
+    ultra_fast_tracked = _score_tracked_ball_entries(
+        frame_groups,
+        basket_zones,
+        max_distance=max_distance,
+        confirm_window=confirm_window,
+        confirm_hits=confirm_hits,
+        min_score_gap_seconds=0.45,
     )
     burst_base = _score_basket_occupancy_bursts(frame_groups, basket_zones)
     burst_conservative = _score_basket_occupancy_bursts(frame_groups, basket_zones, max_empty_gap_frames=6)
@@ -597,6 +633,7 @@ def _score_adaptive_basket_entries(
 
     tracked_counts = counts_by_zone(tracked)
     fast_tracked_counts = counts_by_zone(fast_tracked)
+    ultra_fast_tracked_counts = counts_by_zone(ultra_fast_tracked)
     burst_base_counts = counts_by_zone(burst_base)
     burst_conservative_counts = counts_by_zone(burst_conservative)
     burst_expanded_counts = counts_by_zone(burst_expanded)
@@ -610,6 +647,7 @@ def _score_adaptive_basket_entries(
         is_inventory_zone = 'inventory' in modes
         tracked_count = tracked_counts.get(basket_type, 0)
         fast_tracked_count = fast_tracked_counts.get(basket_type, 0)
+        ultra_fast_tracked_count = ultra_fast_tracked_counts.get(basket_type, 0)
         base_count = burst_base_counts.get(basket_type, 0)
         conservative_count = burst_conservative_counts.get(basket_type, 0)
         expanded_count = burst_expanded_counts.get(basket_type, 0)
@@ -621,8 +659,48 @@ def _score_adaptive_basket_entries(
             and entry_band_count > 0
             and tracked_count > max(entry_band_count * 1.75, entry_band_count + 30)
         )
+        use_ultra_fast_compact_tracker = (
+            not use_entry_band
+            and is_inventory_zone
+            and not is_broad_zone
+            and max_zone_area <= 0.030
+            and ultra_fast_tracked_count >= tracked_count + 2
+            and (
+                ultra_fast_tracked_count <= 30
+                or ultra_fast_tracked_count <= tracked_count + 6
+            )
+            and ultra_fast_tracked_count <= conservative_count + 6
+            and ultra_fast_tracked_count <= expanded_count + 10
+        )
+        use_consensus_compact_tracker = (
+            not use_entry_band
+            and not use_ultra_fast_compact_tracker
+            and is_inventory_zone
+            and not is_broad_zone
+            and max_zone_area <= 0.030
+            and conservative_count <= tracked_count + 3
+            and expanded_count >= tracked_count + 8
+            and ultra_fast_tracked_count >= expanded_count + 10
+        )
+        consensus_compact_target = int(round(
+            tracked_count + max(0, expanded_count - tracked_count) * 0.45
+        ))
+        use_fast_compact_single_miss = (
+            not use_entry_band
+            and not use_ultra_fast_compact_tracker
+            and not use_consensus_compact_tracker
+            and is_inventory_zone
+            and not is_broad_zone
+            and max_zone_area <= 0.045
+            and fast_tracked_count in {tracked_count + 1, tracked_count + 2}
+            and ultra_fast_tracked_count == fast_tracked_count
+            and expanded_count >= fast_tracked_count + 3
+        )
         use_tight_inventory_undercount_fallback = (
             not use_entry_band
+            and not use_ultra_fast_compact_tracker
+            and not use_consensus_compact_tracker
+            and not use_fast_compact_single_miss
             and is_inventory_zone
             and not is_broad_zone
             and conservative_count >= tracked_count + 10
@@ -633,6 +711,9 @@ def _score_adaptive_basket_entries(
         )
         use_fast_inventory_tracker = (
             not use_entry_band
+            and not use_ultra_fast_compact_tracker
+            and not use_consensus_compact_tracker
+            and not use_fast_compact_single_miss
             and not use_tight_inventory_undercount_fallback
             and is_inventory_zone
             and not is_broad_zone
@@ -645,6 +726,8 @@ def _score_adaptive_basket_entries(
             not use_entry_band
             and not use_tight_inventory_undercount_fallback
             and not use_fast_inventory_tracker
+            and not use_consensus_compact_tracker
+            and not use_fast_compact_single_miss
             and not is_inventory_zone
             and base_count >= 20
             and tracked_count < base_count * 0.60
@@ -654,6 +737,8 @@ def _score_adaptive_basket_entries(
             not use_entry_band
             and not use_tight_inventory_undercount_fallback
             and not use_fast_inventory_tracker
+            and not use_consensus_compact_tracker
+            and not use_fast_compact_single_miss
             and not is_inventory_zone
             and base_count >= 20
             and tracked_count < base_count * 0.85
@@ -662,6 +747,8 @@ def _score_adaptive_basket_entries(
             not use_entry_band
             and not use_tight_inventory_undercount_fallback
             and not use_fast_inventory_tracker
+            and not use_consensus_compact_tracker
+            and not use_fast_compact_single_miss
             and not is_inventory_zone
             and base_count >= 6
             and tracked_count > base_count * 1.10
@@ -677,11 +764,40 @@ def _score_adaptive_basket_entries(
                 f"{basket_type}: suppressed tiny likely false-positive basket count "
                 f"because tracked={tracked_count}, burst={base_count}, conservativeBurst={conservative_count}"
             )
+        elif is_inventory_zone and is_broad_zone and entry_band_count == 0 and tracked_count <= 15 and conservative_count <= 8 and base_count <= 8:
+            source = {'events': []}
+            debug_notes.append(
+                f"{basket_type}: suppressed broad inventory zone with weak entry evidence "
+                f"because tracked={tracked_count}, burst={base_count}, conservativeBurst={conservative_count}, "
+                f"entryBand={entry_band_count}"
+            )
         elif use_entry_band:
             source = burst_entry_band
             debug_notes.append(
                 f"{basket_type}: used broad-zone entry band because tracked={tracked_count}, "
                 f"entryBand={entry_band_count}, burst={base_count}, broadZone={is_broad_zone}"
+            )
+        elif use_ultra_fast_compact_tracker:
+            source = ultra_fast_tracked
+            debug_notes.append(
+                f"{basket_type}: used ultra-fast compact inventory tracker because "
+                f"strictTracked={tracked_count}, ultraFastTracked={ultra_fast_tracked_count}, "
+                f"conservativeBurst={conservative_count}, expandedBurst={expanded_count}, "
+                f"maxZoneArea={max_zone_area:.4f}"
+            )
+        elif use_consensus_compact_tracker:
+            source = limit_zone_events(burst_expanded, basket_type, consensus_compact_target)
+            debug_notes.append(
+                f"{basket_type}: used compact consensus cap because strictTracked={tracked_count}, "
+                f"expandedBurst={expanded_count}, ultraFastTracked={ultra_fast_tracked_count}, "
+                f"target={consensus_compact_target}, maxZoneArea={max_zone_area:.4f}"
+            )
+        elif use_fast_compact_single_miss:
+            source = fast_tracked
+            debug_notes.append(
+                f"{basket_type}: used fast compact tracker for a small strict-tracker miss because "
+                f"strictTracked={tracked_count}, fastTracked={fast_tracked_count}, "
+                f"expandedBurst={expanded_count}, maxZoneArea={max_zone_area:.4f}"
             )
         elif use_tight_inventory_undercount_fallback:
             if expanded_count > 0 and expanded_count < conservative_count * 0.90:
@@ -725,6 +841,7 @@ def _score_adaptive_basket_entries(
             debug_notes.append(
                 f"{basket_type}: used track scorer because tracked={tracked_count}, "
                 f"fastTracked={fast_tracked_count}, "
+                f"ultraFastTracked={ultra_fast_tracked_count}, "
                 f"burst={base_count}, conservativeBurst={conservative_count}, "
                 f"expandedBurst={expanded_count}, entryBand={entry_band_count}, "
                 f"inventoryZone={is_inventory_zone}, broadZone={is_broad_zone}, "
@@ -757,6 +874,7 @@ def _score_adaptive_basket_entries(
         'debug': {
             'tracked': {'red': tracked.get('red_score', 0), 'blue': tracked.get('blue_score', 0)},
             'fastTracked': {'red': fast_tracked.get('red_score', 0), 'blue': fast_tracked.get('blue_score', 0)},
+            'ultraFastTracked': {'red': ultra_fast_tracked.get('red_score', 0), 'blue': ultra_fast_tracked.get('blue_score', 0)},
             'burst': {'red': burst_base.get('red_score', 0), 'blue': burst_base.get('blue_score', 0)},
             'conservativeBurst': {'red': burst_conservative.get('red_score', 0), 'blue': burst_conservative.get('blue_score', 0)},
             'expandedBurst': {'red': burst_expanded.get('red_score', 0), 'blue': burst_expanded.get('blue_score', 0)},

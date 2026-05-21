@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 
 from autoscore_algorithm import score_video
+from video_stabilization import stabilize_detection_rows
 
 
 VIDEO_EXTENSIONS = {'.mp4', '.mov', '.mkv', '.webm', '.MOV'}
@@ -28,12 +29,26 @@ def safe_stem(path: Path) -> str:
     return re.sub(r'[^A-Za-z0-9._-]+', '_', path.stem).strip('_') or 'untitled_video'
 
 
+def zone_cache_stem_candidates(path: Path):
+    exact = safe_stem(path)
+    stripped = re.sub(r'\b(red|blue)\s+\d+\s*(balls?)?\b', '', path.stem, flags=re.IGNORECASE)
+    stripped = re.sub(r'\s+', ' ', stripped).strip()
+    candidates = [exact]
+    if stripped:
+        candidates.append(re.sub(r'[^A-Za-z0-9._-]+', '_', stripped).strip('_'))
+    # Handles names like "BroBots blue 18" matching an older "BroBots" zone cache.
+    first_word = re.split(r'\s+', path.stem.strip())[0] if path.stem.strip() else ''
+    if first_word:
+        candidates.append(re.sub(r'[^A-Za-z0-9._-]+', '_', first_word).strip('_'))
+    return list(dict.fromkeys(candidate for candidate in candidates if candidate))
+
+
 def expected_counts(video_name: str):
     lower = video_name.lower()
     red = None
     blue = None
-    red_match = re.search(r'red\s+(\d+)\s+balls?', lower)
-    blue_match = re.search(r'blue\s+(\d+)\s+balls?', lower)
+    red_match = re.search(r'red\s+(\d+)(?:\s+balls?)?', lower)
+    blue_match = re.search(r'blue\s+(\d+)(?:\s+balls?)?', lower)
     if red_match:
         red = int(red_match.group(1))
     if blue_match:
@@ -42,11 +57,14 @@ def expected_counts(video_name: str):
 
 
 def load_saved_zones(root: Path, video_path: Path):
-    zone_path = root / 'runs' / 'local_zone_cache' / f'{safe_stem(video_path)}.zones.json'
-    if not zone_path.exists():
-        return zone_path, []
-    payload = json.loads(zone_path.read_text())
-    return zone_path, payload.get('zones', [])
+    directory = root / 'runs' / 'local_zone_cache'
+    for stem in zone_cache_stem_candidates(video_path):
+        zone_path = directory / f'{stem}.zones.json'
+        if zone_path.exists():
+            payload = json.loads(zone_path.read_text())
+            return zone_path, payload.get('zones', [])
+    zone_path = directory / f'{safe_stem(video_path)}.zones.json'
+    return zone_path, []
 
 
 def run_prediction(root: Path, video_path: Path, prediction_dir: Path, conf: float, force: bool):
@@ -125,6 +143,7 @@ def main():
     parser.add_argument('--conf', type=float, default=0.25)
     parser.add_argument('--force-predict', action='store_true')
     parser.add_argument('--no-save', action='store_true', help='Use temporary predictions and do not write benchmark reports.')
+    parser.add_argument('--no-stabilize', action='store_true', help='Skip camera-motion compensation.')
     parser.add_argument('--limit', type=int, default=0)
     parser.add_argument('--only', action='append', default=[], help='Substring filter for video names; may be repeated.')
     args = parser.parse_args()
@@ -162,6 +181,10 @@ def main():
             print(f'[{index}/{len(videos)}] {video_path.name}')
             prediction_json, predicted_fresh = run_prediction(root, video_path, prediction_dir, args.conf, args.force_predict)
             detections = flatten_prediction(prediction_json)
+            if args.no_stabilize:
+                stabilization_debug = {'enabled': False, 'reason': 'disabled'}
+            else:
+                detections, stabilization_debug = stabilize_detection_rows(video_path, detections, zones)
             result = score_video(
                 video_path.stem,
                 detections,
@@ -198,6 +221,7 @@ def main():
             'prediction_fresh': predicted_fresh,
             'prediction_json': str(prediction_json) if prediction_json else '',
             'zone_path': str(zone_path),
+            'stabilization': stabilization_debug if status == 'ok' else {},
             'seconds': f'{elapsed:.2f}',
             'error': error,
         }

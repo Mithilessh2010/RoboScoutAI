@@ -16,6 +16,11 @@ import { AutoscoreSummary } from "../db/schemas/AutoscoreSummary";
 import { AutoscoreTimelineEvent } from "../db/schemas/AutoscoreTimelineEvent";
 import { AutoscoreTrackedArtifact } from "../db/schemas/AutoscoreTrackedArtifact";
 
+const AUTOSCORE_WORKER_URL = (
+  process.env.AUTOSCORE_WORKER_URL || process.env.VIDEO_PROCESSING_API_URL
+)?.replace(/\/$/, "");
+const AUTOSCORE_WORKER_SECRET = process.env.AUTOSCORE_WORKER_SECRET;
+
 const REQUIRED_ZONE_TYPES = [
   "field_boundary",
   "basket_red",
@@ -32,6 +37,42 @@ export async function runFullDecodeAutoscore(jobId: string) {
   await connectDB();
   let job = await AutoscoreJob.findById(jobId);
   if (!job) throw new Error("Autoscore job not found.");
+
+  if (AUTOSCORE_WORKER_URL) {
+    await job.updateOne({
+      status: "scoring",
+      phase: "decode_autoscore",
+      errorMessage: null,
+    });
+    let response = await fetch(`${AUTOSCORE_WORKER_URL}/run-local-basket-scoring`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(AUTOSCORE_WORKER_SECRET
+          ? { authorization: `Bearer ${AUTOSCORE_WORKER_SECRET}` }
+          : {}),
+      },
+      body: JSON.stringify({
+        jobId,
+        videoUrl: job.videoUrl,
+        conf: job.confidenceThreshold ?? 0.25,
+      }),
+    });
+    let body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      let message =
+        body.error ||
+        body.detail ||
+        `Autoscore worker scoring failed (${response.status}).`;
+      await AutoscoreJob.findByIdAndUpdate(jobId, {
+        status: "failed",
+        errorMessage: message,
+      });
+      throw new Error(message);
+    }
+    return body;
+  }
+
   await job.updateOne({
     status: "scoring",
     phase: "decode_autoscore",

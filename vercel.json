@@ -9,7 +9,9 @@
         "FTC_EVENTS_AUTH_KEY": "B4EA006F-DDD0-4BED-B636-67560E020FD1",
         "PUBLIC_SERVER_ORIGIN": "api.ftcscout.org",
         "PUBLIC_FRONTEND_CODE": "production-frontend-code",
-        "FTC_EVENTS_API_BASE_URL": "https://ftc-api.firstinspires.org/v2.0"
+        "FTC_EVENTS_API_BASE_URL": "https://ftc-api.firstinspires.org/v2.0",
+        "VIDEO_PROCESSING_API_URL": "https://roboscoutai-autoscore-worker.fly.dev",
+        "PUBLIC_VIDEO_PROCESSING_API_URL": "https://roboscoutai-autoscore-worker.fly.dev"
     },
     "functions": {
         "api/**/*.ts": {
