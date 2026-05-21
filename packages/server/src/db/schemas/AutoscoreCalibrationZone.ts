@@ -38,6 +38,7 @@ export interface IAutoscoreCalibrationZone extends Document {
     frameTimestamp: number;
     color?: string | null;
     index?: number | null;
+    scoringMode?: "inventory" | null;
     rampDirection?: "left_to_right" | "right_to_left" | "gate_to_square" | "square_to_gate" | null;
     createdAt: Date;
     updatedAt: Date;
@@ -61,6 +62,11 @@ const autoscoreCalibrationZoneSchema = new Schema<IAutoscoreCalibrationZone>(
         frameTimestamp: { type: Number, default: 0 },
         color: { type: String, default: null },
         index: { type: Number, default: null },
+        scoringMode: {
+            type: String,
+            enum: ["inventory"],
+            default: null,
+        },
         rampDirection: {
             type: String,
             enum: ["left_to_right", "right_to_left", "gate_to_square", "square_to_gate"],

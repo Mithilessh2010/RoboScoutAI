@@ -242,6 +242,7 @@ export async function upsertCalibrationZone(jobId: string, input: any) {
       frameTimestamp: input.frameTimestamp ?? 0,
       color: input.color ?? null,
       index: input.index ?? null,
+      scoringMode: input.scoringMode ?? null,
     },
     { upsert: true, new: true }
   );
