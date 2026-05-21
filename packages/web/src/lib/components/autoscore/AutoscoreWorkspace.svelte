@@ -11,20 +11,14 @@
   const mainZones = [
     { type: "basket_red", label: "Red Scoring Basket", description: "Where red artifacts first enter the scoring structure." },
     { type: "basket_blue", label: "Blue Scoring Basket", description: "Where blue artifacts first enter the scoring structure." },
-    { type: "ramp_red", label: "Red Ramp", description: "Long rail where red classified artifacts collect." },
-    { type: "ramp_blue", label: "Blue Ramp", description: "Long rail where blue classified artifacts collect." },
-    { type: "tunnel_red", label: "Red Secret Tunnel", description: "Narrow path near the gate between basket and ramp." },
-    { type: "tunnel_blue", label: "Blue Secret Tunnel", description: "Narrow path near the gate between basket and ramp." },
-    { type: "base_red", label: "Red Base", description: "Robot return area for end-of-match base scoring." },
-    { type: "base_blue", label: "Blue Base", description: "Robot return area for end-of-match base scoring." },
-    { type: "field_boundary", label: "Field Boundary", description: "Outer playable field area; filters detections outside the field." },
+    { type: "field_boundary", label: "Field Boundary", description: "Optional: outer playable field area; filters detections outside the field." },
   ];
-  const advancedZones = ["depot_red", "depot_blue", "gate_red", "gate_blue", "launch_line_red", "launch_line_blue", "ramp_index_red", "ramp_index_blue"];
-  const requiredZones = mainZones.map((zone) => zone.type);
+  const advancedZones = ["ramp_red", "ramp_blue", "tunnel_red", "tunnel_blue", "base_red", "base_blue", "depot_red", "depot_blue", "gate_red", "gate_blue", "launch_line_red", "launch_line_blue", "ramp_index_red", "ramp_index_blue"];
+  const requiredZones = ["basket_red", "basket_blue"];
   const workflowSteps = [
     { label: "Upload Video", tab: "", hint: "Video loaded" },
     { label: "Match Info", tab: "Match Info", hint: "Teams and motif" },
-    { label: "Mark Areas", tab: "Mark Areas", hint: "Draw baskets, ramps, bases" },
+    { label: "Mark Areas", tab: "Mark Areas", hint: "Draw scoring baskets" },
     { label: "Detect", tab: "Detect", hint: "Run artifact model" },
     { label: "Review Score", tab: "Review Score", hint: "Calculate and inspect" },
   ];
@@ -52,6 +46,8 @@
   let detectionWindow = { start: -Infinity, end: -Infinity };
   let loadingDetectionWindow = false;
   let autoAdvanceZone = true;
+  let suggestTarget: "both" | "red" | "blue" = "both";
+  let includeBoundarySuggestion = false;
   let playbackMeta: any = {
     uploadedFilename: "",
     fileSize: null,
@@ -86,7 +82,7 @@
     red: latestState("red", currentTime),
     blue: latestState("blue", currentTime),
   };
-  $: selectableZones = advancedMode ? [...requiredZones, ...advancedZones] : requiredZones;
+  $: selectableZones = advancedMode ? [...mainZones.map((zone) => zone.type), ...advancedZones] : mainZones.map((zone) => zone.type);
   $: zoneCoverage = mainZones.map((zone) => ({ ...zone, saved: zones.some((z) => z.zoneType === zone.type) }));
   $: selectedZone = zones.find((z) => z._id === selectedZoneId) ?? null;
   $: completedZoneCount = zoneCoverage.filter((zone) => zone.saved).length;
@@ -277,7 +273,7 @@
     draftRect = null;
   }
   function nextCalibrationZone(zoneType: string) {
-    let sequence = requiredZones;
+    let sequence = advancedMode ? selectableZones : ["basket_red", "basket_blue", "field_boundary"];
     let index = sequence.indexOf(zoneType);
     if (index < 0) return sequence[0] ?? zoneType;
     return sequence[(index + 1) % sequence.length] ?? zoneType;
@@ -343,23 +339,29 @@
   }
   async function suggestAreasFromFrame() {
     if (!job?.videoUrl) return;
-    let shouldOverwrite = zones.length === 0 || confirm("Auto-suggest will replace the current marked areas. You can still edit every box after. Continue?");
+    let targetTypes = [
+      ...(suggestTarget === "red" || suggestTarget === "both" ? ["basket_red"] : []),
+      ...(suggestTarget === "blue" || suggestTarget === "both" ? ["basket_blue"] : []),
+      ...(includeBoundarySuggestion ? ["field_boundary"] : []),
+    ];
+    if (!targetTypes.length) {
+      errorMessage = "Choose Red Basket, Blue Basket, or Both before suggesting areas.";
+      return;
+    }
+    let shouldOverwrite = confirm(`Auto-suggest will replace only: ${targetTypes.map(labelFor).join(", ")}. You can edit every box after. Continue?`);
     if (!shouldOverwrite) return;
     busy = true; errorMessage = "";
     try {
-      if (zones.length) await api(`/api/autoscore/jobs/${jobId}/calibration-zones`, { method: "DELETE" });
+      for (let zone of zones.filter((item) => targetTypes.includes(item.zoneType))) {
+        await api(`/api/autoscore/jobs/${jobId}/calibration-zones/${zone._id}`, { method: "DELETE" });
+      }
       let suggestions: Record<string, any> = {
-        field_boundary: { x1: 0.06, y1: 0.10, x2: 0.94, y2: 0.89 },
         basket_blue: { x1: 0.03, y1: 0.07, x2: 0.23, y2: 0.30 },
         basket_red: { x1: 0.77, y1: 0.07, x2: 0.97, y2: 0.30 },
-        ramp_blue: { x1: 0.04, y1: 0.26, x2: 0.16, y2: 0.88 },
-        ramp_red: { x1: 0.84, y1: 0.26, x2: 0.96, y2: 0.88 },
-        tunnel_blue: { x1: 0.16, y1: 0.23, x2: 0.28, y2: 0.43 },
-        tunnel_red: { x1: 0.72, y1: 0.23, x2: 0.84, y2: 0.43 },
-        base_red: { x1: 0.30, y1: 0.70, x2: 0.43, y2: 0.86 },
-        base_blue: { x1: 0.57, y1: 0.70, x2: 0.70, y2: 0.86 },
+        field_boundary: { x1: 0.06, y1: 0.10, x2: 0.94, y2: 0.89 },
       };
-      for (let [zoneType, rect] of Object.entries(suggestions)) {
+      for (let zoneType of targetTypes) {
+        let rect = suggestions[zoneType];
         let alliance = zoneType.includes("_red") ? "red" : zoneType.includes("_blue") ? "blue" : null;
         await api(`/api/autoscore/jobs/${jobId}/calibration-zones`, {
           method: "POST",
@@ -367,12 +369,13 @@
           body: JSON.stringify({ zoneType, alliance, shapeType: "rectangle", coordinates: rectPoints(rect), frameTimestamp: currentTime }),
         });
       }
-      job.confirmedZones = { basket_red: false, basket_blue: false };
+      if (targetTypes.includes("basket_red")) job.confirmedZones.basket_red = false;
+      if (targetTypes.includes("basket_blue")) job.confirmedZones.basket_blue = false;
       await saveJob();
       await load();
       activeTab = "Mark Areas";
       drawMode = "select";
-      message = "Suggested areas added. Review and drag/resize them before detection.";
+      message = "Suggested basket area added. Review and drag/resize before detection.";
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : String(error);
     } finally {
@@ -606,12 +609,21 @@
             <p>{drawMode === "draw" ? "Drag a rectangle directly on the video, then click Save Area." : "Click a saved rectangle, drag to move it, or drag a corner handle to resize."}</p>
           </div>
         </div>
+        <div class="suggest-controls">
+          <span>Auto-suggest</span>
+          <div class="segmented">
+            <button class:active={suggestTarget === "red"} on:click={() => suggestTarget = "red"}>Red only</button>
+            <button class:active={suggestTarget === "blue"} on:click={() => suggestTarget = "blue"}>Blue only</button>
+            <button class:active={suggestTarget === "both"} on:click={() => suggestTarget = "both"}>Both</button>
+          </div>
+          <label><input type="checkbox" bind:checked={includeBoundarySuggestion} />Include field border</label>
+          <button disabled={busy || !job.videoUrl} on:click={suggestAreasFromFrame}>Suggest Basket Area{suggestTarget === "both" ? "s" : ""}</button>
+        </div>
         <div class="quick-actions">
-          <button disabled={busy || !job.videoUrl} on:click={suggestAreasFromFrame}>Auto-detect / suggest areas</button>
           <button class:secondary={drawMode !== "draw"} on:click={() => drawMode="draw"}>Draw new area</button>
           <button class:secondary={drawMode !== "select"} on:click={() => drawMode="select"}>Move / resize areas</button>
         </div>
-        <p class="subtle">Pick an area below. Red areas draw red, blue areas draw blue, and Secret Tunnel draws yellow so it is easy to see what you are marking.</p>
+        <p class="subtle">Pick Red Basket or Blue Basket, then drag a rectangle on the video. Field Boundary is optional and only helps ignore detections outside the field.</p>
         <div class="zone-card-grid">
           {#each mainZones as zone}
             <button
@@ -632,10 +644,10 @@
         <div class="toolbar-row"><select bind:value={activeZone}>{#each selectableZones as zone}<option value={zone}>{labelFor(zone)}</option>{/each}</select>
         {#if activeZone.startsWith("ramp_index_")}<input type="number" min="1" max="9" bind:value={slotIndex} />{/if}
         <button on:click={saveZone}>Save Area{autoAdvanceZone ? " & Next" : ""}</button><button class="secondary" on:click={updateSelectedZone}>Save Edits</button><button class="secondary" on:click={deleteSelectedZone}>Delete Selected</button><button class="danger" on:click={clearAllZones}>Clear All Areas</button></div>
-      </div><div class="coverage"><h3>Required Field Areas</h3>{#each zoneCoverage as item}<span class:saved={item.saved}>{item.saved ? "✓" : "○"} {item.label}</span>{/each}</div></div>
+      </div><div class="coverage"><h3>Needed Now</h3>{#each zoneCoverage as item}<span class:saved={item.saved}>{item.saved ? "✓" : "○"} {item.label}{item.type === "field_boundary" ? " (optional)" : ""}</span>{/each}</div></div>
     {:else if activeTab === "Detect"}
       <div class="actions"><button disabled={busy || !job.videoUrl} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-frame-artifact-detection`, "Artifact detection started.")}>Run Artifact Detection</button>{#if advancedMode}<button class="secondary" disabled={busy || !job.videoUrl} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-artifact-detection`, "Quick artifact scan started.")}>Quick scan</button>{/if}</div>
-      <p class="subtle">The artifact model checks the video frame by frame, then the scorer uses baskets, tunnels, and ramp count changes to decide what counted.</p>
+      <p class="subtle">The artifact model checks the video frame by frame, then the scorer uses the confirmed basket areas to decide which artifacts crossed into scoring.</p>
       <dl><dt>Artifacts</dt><dd>{summary?.artifactGreenCount ?? 0} green · {summary?.artifactPurpleCount ?? 0} purple</dd><dt>Robots</dt><dd>{summary?.robotDetectionCount ?? 0}</dd><dt>Average confidence</dt><dd>{Math.round((summary?.averageConfidence ?? 0)*100)}%</dd></dl>
     {:else if activeTab === "Review Score"}
       <div class="actions"><button disabled={busy} on:click={() => run(`/api/autoscore/jobs/${jobId}/run-full-decode-autoscore`, "DECODE autoscore calculated.")}>Calculate Score</button><button class="secondary" on:click={recalc}>Recalculate after edits</button></div>
@@ -678,7 +690,7 @@
   input,select,button{padding:9px;border:1px solid var(--sep-color);border-radius:8px;background:var(--form-bg-color);color:var(--text-color)}button{background:var(--theme-color);color:var(--theme-text-color);cursor:pointer}.secondary{background:var(--form-bg-color);color:var(--text-color)}.danger{background:#6e2631}
   .advanced{margin-left:auto}
   .split{display:grid;grid-template-columns:1.35fr .65fr;gap:16px}.coverage{display:grid;gap:8px;align-content:start}.coverage span{padding:8px;border:1px solid var(--sep-color);border-radius:8px;color:var(--secondary-text-color)}.coverage .saved{border-color:#38d98a;color:#38d98a}
-  .draw-instruction{display:grid;grid-template-columns:42px 1fr;gap:12px;align-items:center;padding:12px;border:1px solid var(--sep-color);border-radius:10px;margin-bottom:10px;background:color-mix(in srgb,var(--form-bg-color) 82%, transparent)}.draw-instruction span{width:42px;height:42px;border-radius:999px;display:grid;place-items:center;font-weight:800}.draw-instruction p{color:var(--secondary-text-color);margin-top:3px}.draw-instruction.red{border-color:#ff4d5f}.draw-instruction.red span{background:#ff4d5f;color:white}.draw-instruction.blue{border-color:#36a7ff}.draw-instruction.blue span{background:#36a7ff;color:white}.draw-instruction.gold{border-color:#ffd166}.draw-instruction.gold span{background:#ffd166;color:#17120a}.draw-instruction.neutral span{background:#f8fafc;color:#111827}.quick-actions{margin-bottom:10px}
+  .draw-instruction{display:grid;grid-template-columns:42px 1fr;gap:12px;align-items:center;padding:12px;border:1px solid var(--sep-color);border-radius:10px;margin-bottom:10px;background:color-mix(in srgb,var(--form-bg-color) 82%, transparent)}.draw-instruction span{width:42px;height:42px;border-radius:999px;display:grid;place-items:center;font-weight:800}.draw-instruction p{color:var(--secondary-text-color);margin-top:3px}.draw-instruction.red{border-color:#ff4d5f}.draw-instruction.red span{background:#ff4d5f;color:white}.draw-instruction.blue{border-color:#36a7ff}.draw-instruction.blue span{background:#36a7ff;color:white}.draw-instruction.gold{border-color:#ffd166}.draw-instruction.gold span{background:#ffd166;color:#17120a}.draw-instruction.neutral span{background:#f8fafc;color:#111827}.quick-actions{margin-bottom:10px}.suggest-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 10px;padding:10px;border:1px solid var(--sep-color);border-radius:10px;background:color-mix(in srgb,var(--form-bg-color) 70%, transparent)}.suggest-controls>span{font-weight:700}.segmented{display:flex;gap:4px;padding:4px;border:1px solid var(--sep-color);border-radius:10px}.segmented button{background:transparent;color:var(--secondary-text-color);padding:7px 10px}.segmented button.active{background:var(--theme-color);color:var(--theme-text-color)}
   .zone-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.zone-card{display:grid;grid-template-columns:30px 1fr;gap:3px 8px;text-align:left;background:var(--form-bg-color);color:var(--text-color);position:relative}.zone-card span{grid-row:1/3;width:30px;height:30px;border-radius:999px;display:grid;place-items:center;font-weight:800}.zone-card small{color:var(--secondary-text-color)}.zone-card.red span{background:#ff4d5f;color:white}.zone-card.blue span{background:#36a7ff;color:white}.zone-card.gold span{background:#ffd166;color:#17120a}.zone-card.neutral span{background:#f8fafc;color:#111827}.zone-card-grid .zone-saved{outline:1px solid #38d98a}.zone-card-grid .zone-active{background:color-mix(in srgb,var(--theme-color) 30%, var(--form-bg-color));box-shadow:0 0 0 3px color-mix(in srgb,var(--theme-color) 20%, transparent)}.zone-card-grid .zone-active small{color:inherit}.goal-confirm{display:flex;gap:8px;margin-top:10px}.goal-confirm .confirmed{background:#1d6b4e}
   .walkthrough-item{padding:10px 0;border-top:1px solid var(--sep-color)}.walkthrough-item p{margin-top:4px}.walkthrough-item small{color:var(--secondary-text-color)}.review-actions{display:flex;gap:8px}
   .ai-summary{padding:10px;border:1px solid var(--sep-color);border-radius:8px;margin-bottom:10px}.ai-summary p{margin-top:4px;color:var(--secondary-text-color)}
